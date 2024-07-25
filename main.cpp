@@ -175,7 +175,7 @@ void create_graph(long N, long M, int K, Tnode *&nodes, Thedge *&hedges, gsl_rng
     }
 
     for (long i = 0; i < N; i++){
-        nodes[i].nch = (1 >> nodes[i].nfacn);
+        nodes[i].nch = (1 << nodes[i].nfacn);
     }
 }
 
@@ -205,7 +205,7 @@ double rate_fms(int E0, int E1, int K, double eta, double Eav){
 // initializes the arrays where the binomial weights will be stored. Those arrays are used 
 // to compute the probability of selecting the variable belonging to the smallest number 
 // of satisfied clauses
-void init_aux_arr(double **&binom_probs, double **&binom_sums, double ***&pneigh, int **&cj, 
+void init_aux_arr(double **&binom_probs, double **&binom_sums, double **&pneigh, int **&cj, 
                   int max_c, int K){
     binom_probs = new double *[max_c];
     for (int gj = 0; gj < max_c; gj++){
@@ -217,12 +217,9 @@ void init_aux_arr(double **&binom_probs, double **&binom_sums, double ***&pneigh
         binom_sums[s] = new double[max_c];
     }
     
-    pneigh = new double **[max_c + 1];
-    for (int u = 0; u < max_c + 1; u++){
-        pneigh[u] = new double *[K - 1];
-        for (int j = 0; j < K - 1; j++){
-            pneigh[u][j] = new double[2];
-        }
+    pneigh = new double *[K - 1];
+    for (int j = 0; j < K - 1; j++){
+        pneigh[j] = new double[2];
     }
 
     cj = new int *[max_c + 1];
@@ -236,7 +233,7 @@ void init_aux_arr(double **&binom_probs, double **&binom_sums, double ***&pneigh
 void get_all_binom_sums(int max_c, double pu_av, double **binom_probs, 
                         double **binom_sums){
     for (int gj = 0; gj < max_c; gj++){
-        for (int sj = 0; sj < gj + 1; sj){
+        for (int sj = 0; sj < gj + 1; sj++){
             binom_probs[gj][sj] = gsl_ran_binomial_pdf(sj, 1 - pu_av, gj);
         }
     }
@@ -250,13 +247,11 @@ void get_all_binom_sums(int max_c, double pu_av, double **binom_probs,
 
 
 // it fills the array of the probabilities to be used when computing the walksat rate
-void fill_pneigh(int E0, int S, int **cj, double **binom_probs, double **binom_sums, 
-                 double ***pneigh, int K){
-    for (int hind = 0; hind < E0; hind++){
-        for (int j = 0; j < K - 1; j++){
-            pneigh[hind][j][0] = binom_probs[cj[hind][j] - 1][S];
-            pneigh[hind][j][1] = binom_sums[S][cj[hind][j] - 1];
-        }
+void fill_pneigh(int E0, int S, int *cj, double **binom_probs, double **binom_sums, 
+                 double **pneigh, int K){
+    for (int j = 0; j < K - 1; j++){
+        pneigh[j][0] = binom_probs[cj[j] - 1][S];
+        pneigh[j][1] = binom_sums[S][cj[j] - 1];
     }
 }
 
@@ -265,33 +260,29 @@ void fill_pneigh(int E0, int S, int **cj, double **binom_probs, double **binom_s
 // cj is a list of all the connectivities of the neighbors of node i that are 
 // in unsatisfied clauses
 double rate_walksat(int E0, int S, int K, double q, double Eav, int **cj, 
-                    double **binom_probs, double **binom_sums, double ***pneigh, 
+                    double **binom_probs, double **binom_sums, double **pneigh, 
                     int nchain){
-    bool cond = true;
-    int hind = 0;
-    while (hind < E0 && cond){
-        int k = 0;
-        while (k < K && cond){
-            if (cj[hind][k] - 1 < S){
+    bool cond;
+    double cumul, prod;
+    int cumul_bits, bit, k;
+    cumul = 0;
+    for (int fn = 0; fn < E0; fn++){
+        cond = true;
+        k = 0;
+        while (k < K - 1 && cond){
+            if (cj[fn][k] - 1 < S){
                 cond = false;
             }
             k++;
         }
-        hind++;
-    }
-
-    if (cond){
-        fill_pneigh(E0, S, cj, binom_probs, binom_sums, pneigh, K);
-        double cumul, prod;
-        int cumul_bits, bit;
-        cumul = 0;
-        for (int fn = 0; fn < E0; fn++){
+        if (cond){   
+            fill_pneigh(E0, S, cj[fn], binom_probs, binom_sums, pneigh, K);
             for (int ch = 0; ch < nchain; ch++){
                 prod = 1;
                 cumul_bits = 0;
                 for (int w = 0; w < K - 1; w++){
                     bit = ((ch >> w) & 1);
-                    prod *= pneigh[fn][w][bit];  // when bit=0, one uses the probability 
+                    prod *= pneigh[w][bit];  // when bit=0, one uses the probability 
                     // of finding that the neighbor (fn, w) belongs to the exact same number of
                     // satisfied clauses. When bit=1, one uses the probability that the neighbor
                     // (fn, w) belongs to more than S satisfied clauses.
@@ -302,16 +293,13 @@ double rate_walksat(int E0, int S, int K, double q, double Eav, int **cj,
                 // uniformly at random among those variables with the same S.
             }
         }
-        return q * E0 / Eav / K + (1 - q) * cumul / Eav / K; 
-    }else{
-        return q * E0 / Eav / K;
     }
-
+    return q * E0 / Eav / K + (1 - q) * cumul / Eav / K; 
 }
 
 // it does the sum in the derivative of the CDA equations
 double sum_walksat(long node, Tnode *nodes, Thedge *hedges, double **pu_cond, int **cj, 
-                   double **binom_probs, double **binom_sums, double ***pneigh, int K, 
+                   double **binom_probs, double **binom_sums, double **pneigh, int K, 
                    int nch_fn, double q, double Eav){
     
     int w, idx_c_2, E0;
@@ -350,11 +338,11 @@ int main(int argc, char *argv[]) {
     unsigned long seed_r = atol(argv[5]);
     double q = atof(argv[6]);
 
-    int nch_fn = (1 >> K);
+    int nch_fn = (1 << K);
 
     Tnode *nodes;
     Thedge *hedges;
-    double **binom_probs, **binom_sums, ***pneigh;
+    double **binom_probs, **binom_sums, **pneigh;
     int **cj;
     double **pu_cond;
 
