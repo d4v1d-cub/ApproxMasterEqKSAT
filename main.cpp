@@ -3,6 +3,7 @@
 #include <vector>
 #include <algorithm>
 #include <gsl/gsl_randist.h>
+#include <gsl/gsl_cdf.h>
 #include <cmath>
 
 using namespace std;
@@ -21,6 +22,8 @@ typedef struct{
     int nfacn;      // number of factor nodes
     vector <long> fn_in; // list of factor nodes to which the nodes belongs
     vector <int> pos_fn;  // position in each factor node's list of nodes.
+    long nch;   // the number of possible combinations of the states of 
+                    // the neighboring clauses.
 }Tnode;
 
 
@@ -71,6 +74,7 @@ void read_graph(char *filegraph, long N, long M, int K, Tnode *&nodes, Thedge *&
     for (long i = 0; i < N; i++){
         fg >> trash_double;
         fg >> nodes[i].nfacn;
+        nodes[i].nch = (1 >> nodes[i].nfacn); 
         getline(fg, trash_str);
         getline(fg, trash_str);
         nodes_in[0] = i;
@@ -169,7 +173,23 @@ void create_graph(long N, long M, int K, Tnode *&nodes, Thedge *&hedges, gsl_rng
             }
         }
     }
+
+    for (long i = 0; i < N; i++){
+        nodes[i].nch = (1 >> nodes[i].nfacn);
+    }
 }
+
+
+int get_max_c(Tnode *nodes, long N){
+    int max_c = 0;
+    for (long i = 0; i < N; i++){
+        if (nodes[i].nfacn > max_c){
+            max_c = nodes[i].nfacn;
+        }
+    }
+    return max_c;
+}
+
 
 // rate of the Focused Metropolis Search algorithm.
 double rate_fms(int E0, int E1, int K, double eta, double Eav){
@@ -182,24 +202,60 @@ double rate_fms(int E0, int E1, int K, double eta, double Eav){
 }
 
 
-void init_binom(double **&binom_probs, double **&binom_sums){
+// initializes the arrays where the binomial weights will be stored. Those arrays are used 
+// to compute the probability of selecting the variable belonging to the smallest number 
+// of satisfied clauses
+void init_aux_arr(double **&binom_probs, double **&binom_sums, double ***&pneigh, int **&cj, 
+                  int max_c, int K){
+    binom_probs = new double *[max_c];
+    for (int gj = 0; gj < max_c; gj++){
+        binom_probs[gj] = new double[gj + 1];
+    }
+
+    binom_sums = new double *[max_c + 1];
+    for (int s = 0; s < max_c + 1; s++){
+        binom_sums[s] = new double[max_c];
+    }
     
+    pneigh = new double **[max_c + 1];
+    for (int u = 0; u < max_c + 1; u++){
+        pneigh[u] = new double *[K - 1];
+        for (int j = 0; j < K - 1; j++){
+            pneigh[u][j] = new double[2];
+        }
+    }
+
+    cj = new int *[max_c + 1];
+    for (int h = 0; h < max_c + 1; h++){
+        cj[h] = new int[K - 1];
+    }
 }
 
 
-void get_all_binom_sums(int max_c, int c_cutoff, double pu_av, double **binom_probs, 
+// it computes the binomial weights
+void get_all_binom_sums(int max_c, double pu_av, double **binom_probs, 
                         double **binom_sums){
-    for (int cj = 0; cj < c_cutoff + 1; cj++){
-        for (int sj = 0; sj < cj + 1; sj){
-            binom_probs[cj][sj] = gsl_ran_binomial_pdf(sj, 1 - pu_av, cj);
+    for (int gj = 0; gj < max_c; gj++){
+        for (int sj = 0; sj < gj + 1; sj){
+            binom_probs[gj][sj] = gsl_ran_binomial_pdf(sj, 1 - pu_av, gj);
         }
     }
     
     for (int si = 0; si < max_c + 1; si++){
-        for (int cj = 0; cj < c_cutoff + 1; cj++){
-            binom_sums[si][cj] = 0;
-            for (int sj = 0; sj < cj + 1; sj){
-            }
+        for (int gj = 0; gj < max_c; gj++){
+            binom_sums[si][gj] = gsl_cdf_binomial_Q(si, 1 - pu_av, gj);
+        }
+    }
+}
+
+
+// it fills the array of the probabilities to be used when computing the walksat rate
+void fill_pneigh(int E0, int S, int **cj, double **binom_probs, double **binom_sums, 
+                 double ***pneigh, int K){
+    for (int hind = 0; hind < E0; hind++){
+        for (int j = 0; j < K - 1; j++){
+            pneigh[hind][j][0] = binom_probs[cj[hind][j] - 1][S];
+            pneigh[hind][j][1] = binom_sums[S][cj[hind][j] - 1];
         }
     }
 }
@@ -208,10 +264,81 @@ void get_all_binom_sums(int max_c, int c_cutoff, double pu_av, double **binom_pr
 // rate of the walksat algorithm used by Barthel et al. in 2003
 // cj is a list of all the connectivities of the neighbors of node i that are 
 // in unsatisfied clauses
-double rate_walksat(int E0, int S, int K, double q, double Eav, int M, int cj, ){
-    for (int hind = 0; hind < E0; hind++){
-
+double rate_walksat(int E0, int S, int K, double q, double Eav, int **cj, 
+                    double **binom_probs, double **binom_sums, double ***pneigh, 
+                    int nchain){
+    bool cond = true;
+    int hind = 0;
+    while (hind < E0 && cond){
+        int k = 0;
+        while (k < K && cond){
+            if (cj[hind][k] - 1 < S){
+                cond = false;
+            }
+            k++;
+        }
+        hind++;
     }
+
+    if (cond){
+        fill_pneigh(E0, S, cj, binom_probs, binom_sums, pneigh, K);
+        double cumul, prod;
+        int cumul_bits, bit;
+        cumul = 0;
+        for (int fn = 0; fn < E0; fn++){
+            for (int ch = 0; ch < nchain; ch++){
+                prod = 1;
+                cumul_bits = 0;
+                for (int w = 0; w < K - 1; w++){
+                    bit = ((ch >> w) & 1);
+                    prod *= pneigh[fn][w][bit];  // when bit=0, one uses the probability 
+                    // of finding that the neighbor (fn, w) belongs to the exact same number of
+                    // satisfied clauses. When bit=1, one uses the probability that the neighbor
+                    // (fn, w) belongs to more than S satisfied clauses.
+                    cumul_bits += 1 - bit;
+                }
+                cumul += prod / (cumul_bits + 1);  // When other neighbors have the same 
+                // number of satisfied clauses S, the variable inside the rate will be picked 
+                // uniformly at random among those variables with the same S.
+            }
+        }
+        return q * E0 / Eav / K + (1 - q) * cumul / Eav / K; 
+    }else{
+        return q * E0 / Eav / K;
+    }
+
+}
+
+// it does the sum in the derivative of the CDA equations
+double sum_walksat(long node, Tnode *nodes, Thedge *hedges, double **pu_cond, int **cj, 
+                   double **binom_probs, double **binom_sums, double ***pneigh, int K, 
+                   int nch_fn, double q, double Eav){
+    
+    int w, idx_c_2, E0;
+    double r, cumul = 0;
+    for (long ch = 0; ch < nodes[node].nch; ch++){
+        E0 = 0;
+        for (int hind = 0; hind < nodes[node].nfacn; hind++){
+            if ((ch >> hind) & 1){
+                w = (nodes[node].pos_fn[hind] + 1) % K;
+                idx_c_2 = 0;
+                while (w != nodes[node].pos_fn[hind]){
+                    cj[E0][idx_c_2] = 
+                            nodes[hedges[nodes[node].fn_in[hind]].nodes_in[w]].nfacn;
+                    // It's the connectivity of one of the other nodes inside the factor node: 
+                    // 'he = nodes[node].fn_in[hind]'
+                    idx_c_2++;
+                    w = (w + 1) % K;
+                }
+                E0++;
+            }
+        }
+
+        r = rate_walksat(E0, nodes[node].nfacn - E0, K, q, Eav, cj, binom_probs, 
+                         binom_sums, pneigh, nch_fn);
+        cumul += r;
+    }
+    return r;
 }
 
 
@@ -221,9 +348,15 @@ int main(int argc, char *argv[]) {
     int K = atoi(argv[3]);
     long seed_g = atol(argv[4]);
     unsigned long seed_r = atol(argv[5]);
+    double q = atof(argv[6]);
+
+    int nch_fn = (1 >> K);
 
     Tnode *nodes;
     Thedge *hedges;
+    double **binom_probs, **binom_sums, ***pneigh;
+    int **cj;
+    double **pu_cond;
 
     gsl_rng * r;
     init_ran(r, seed_r);
@@ -234,7 +367,14 @@ int main(int argc, char *argv[]) {
     // sprintf(filelinks, "KSAT_K_%d_enlaces_N_%li_M_%li_idumenlaces_%li_idumgraph_%li_ordered.txt", K, N, M, seed_g, seed_g);
 
     create_graph(N, M, K, nodes, hedges, r);
+    int max_c = get_max_c(nodes, N);
 
-    cout << "done" << endl;
+    init_aux_arr(binom_probs, binom_sums, pneigh, cj, max_c, K);
+    double pu_av = 0.3;
+    double Eav = pu_av * M;
+    get_all_binom_sums(max_c, pu_av, binom_probs, binom_sums);
+    sum_walksat(10, nodes, hedges, pu_cond, cj, binom_probs, binom_sums, pneigh, K, nch_fn, 
+                q, Eav);
+
     return 0;
 }
