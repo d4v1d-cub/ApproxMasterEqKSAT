@@ -24,6 +24,9 @@ typedef struct{
     vector <int> pos_fn;  // position in each factor node's list of nodes.
     long nch;   // the number of possible combinations of the states of 
                     // the neighboring clauses.
+    long **fn_exc;  // remaining factor nodes after one removes a specific factor node
+                    // first index: removed fn, second index: list of remaining fn.
+    int **pos_fn_exc;   // position in the remaining fn in the same order as in fn_exc.
 }Tnode;
 
 
@@ -32,6 +35,7 @@ typedef struct{
     vector <long> nodes_in;  // nodes inside the factor node
     vector <int> links; // links to those nodes
     vector <int> pos_n;   // position in each node's list of factor nodes.
+    long **nodes_exc;   // remaining nodes after one removes a specific node from the factor node.
 }Thedge;
 
 
@@ -180,6 +184,42 @@ void create_graph(long N, long M, int K, Tnode *&nodes, Thedge *&hedges, gsl_rng
 }
 
 
+void get_info_exc(Tnode *nodes, Thedge *hedges, long N, long M, int K){
+    int w, count;
+    for (long he = 0; he < M; he++){
+        hedges[he].nodes_exc = new long *[K];
+        for (int j = 0; j < K; j++){
+            hedges[he].nodes_exc[j] = new long [K - 1];
+            count = 0;
+            w = (j + 1) % K;
+            while (w != j){
+                hedges[he].nodes_exc[j][count] = hedges[he].nodes_in[w];
+                w = (w + 1) % K;
+                count++;
+            }
+        } 
+    }
+
+    int other;
+    for (long i = 0; i < N; i++){
+        nodes[i].fn_exc = new long *[nodes[i].nfacn];
+        nodes[i].pos_fn_exc = new int *[nodes[i].nfacn];
+        for (int hind = 0; hind < nodes[i].nfacn; hind++){
+            nodes[i].fn_exc[hind] = new long [nodes[i].nfacn - 1];
+            nodes[i].pos_fn_exc[hind] = new int [nodes[i].nfacn - 1];
+            other = (hind + 1) % nodes[i].nfacn;
+            count = 0;
+            while (other != hind){
+                nodes[i].fn_exc[hind][count] = nodes[i].fn_in[other];
+                nodes[i].pos_fn_exc[hind][count] = nodes[i].pos_fn[other];
+                count++;
+                other = (other + 1) % nodes[i].nfacn;
+            }
+        }
+    }
+}
+
+
 int get_max_c(Tnode *nodes, long N){
     int max_c = 0;
     for (long i = 0; i < N; i++){
@@ -188,6 +228,37 @@ int get_max_c(Tnode *nodes, long N){
         }
     }
     return max_c;
+}
+
+
+// initializes all the joint and conditional probabilities
+void init_probs(double **&prob_joint, double ***&pu_cond, long M, int K, int nch_fn, double p0){
+    double prod;
+    int bit;
+    prob_joint = new double *[M];
+    pu_cond = new double **[M];
+    for (long he = 0; he < M; he++){
+        prob_joint[he] = new double [nch_fn];
+        for (int ch = 0; ch < nch_fn; ch++){
+            prod = 1;
+            for (int w = 0; w < K; w++){
+                bit = ((ch >> w) & 1);
+                prod *= (bit + (1 - 2 * bit) * p0);
+            }
+        }
+
+        pu_cond[he] = new double*[K];
+        for (int w = 0; w < K; w++){
+            pu_cond[he][w] = new double [2];
+        }
+    }
+}
+
+
+// it computes the conditional probabilities of having a partially unsatisfied clause, given the 
+// value of one variable in the clause
+void comp_pcond(){
+
 }
 
 
@@ -308,15 +379,11 @@ double sum_walksat(long node, Tnode *nodes, Thedge *hedges, double **pu_cond, in
         E0 = 0;
         for (int hind = 0; hind < nodes[node].nfacn; hind++){
             if ((ch >> hind) & 1){
-                w = (nodes[node].pos_fn[hind] + 1) % K;
-                idx_c_2 = 0;
-                while (w != nodes[node].pos_fn[hind]){
-                    cj[E0][idx_c_2] = 
-                            nodes[hedges[nodes[node].fn_in[hind]].nodes_in[w]].nfacn;
+                for (int h = 0; h < K - 1; h++){
+                    cj[E0][h] = 
+                            nodes[hedges[nodes[node].fn_in[hind]].nodes_exc[nodes[node].pos_fn]].nfacn;
                     // It's the connectivity of one of the other nodes inside the factor node: 
                     // 'he = nodes[node].fn_in[hind]'
-                    idx_c_2++;
-                    w = (w + 1) % K;
                 }
                 E0++;
             }
