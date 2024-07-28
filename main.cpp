@@ -9,6 +9,11 @@
 using namespace std;
 
 
+int E[2];
+double r[2], prod[2];
+    
+
+
 void init_ran(gsl_rng * &r, unsigned long s){
     const gsl_rng_type * T;
     gsl_rng_env_setup();
@@ -426,9 +431,7 @@ void sum_walksat(long node, int fn_src, int part_uns, Tnode *nodes, Thedge *hedg
                    double *prob_joint, double ***pu_cond, int ***cj, double **binom_probs, 
                    double **binom_sums, double **pneigh, int K, int nch_fn, double q, 
                    double Eav, double *me_sum_src){
-    
-    int E[2], he, plc_he;
-    double r[2], prod[2];
+    int he, plc_he;
     int plc_src = nodes[node].pos_fn[fn_src];
     bool bit;
     for (long ch = 0; ch < nodes[node].nch / 2; ch++){
