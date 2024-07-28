@@ -232,13 +232,16 @@ int get_max_c(Tnode *nodes, long N){
 
 
 // initializes all the joint and conditional probabilities
-void init_probs(double **&prob_joint, double ***&pu_cond, long M, int K, int nch_fn, double p0){
+void init_probs(double **&prob_joint, double ***&pu_cond, double **&pi, double **&me_sum, long M, int K, 
+                int nch_fn, double p0){
     double prod;
     int bit;
     prob_joint = new double *[M];
+    me_sum = new double *[M];
     pu_cond = new double **[M];
     for (long he = 0; he < M; he++){
         prob_joint[he] = new double [nch_fn];
+        me_sum[he] = new double [nch_fn];
         for (int ch = 0; ch < nch_fn; ch++){
             prod = 1;
             for (int w = 0; w < K; w++){
@@ -252,13 +255,11 @@ void init_probs(double **&prob_joint, double ***&pu_cond, long M, int K, int nch
             pu_cond[he][w] = new double [2];
         }
     }
-}
 
-
-// it computes the conditional probabilities of having a partially unsatisfied clause, given the 
-// value of one variable in the clause
-void comp_pcond(){
-
+    pi = new double*[K];
+    for (int w = 0; w < K; w++){
+        pi[w] = new double[2];
+    }
 }
 
 
@@ -276,7 +277,7 @@ double rate_fms(int E0, int E1, int K, double eta, double Eav){
 // initializes the arrays where the binomial weights will be stored. Those arrays are used 
 // to compute the probability of selecting the variable belonging to the smallest number 
 // of satisfied clauses
-void init_aux_arr(double **&binom_probs, double **&binom_sums, double **&pneigh, int **&cj, 
+void init_aux_arr(double **&binom_probs, double **&binom_sums, double **&pneigh, int ***&cj, 
                   int max_c, int K){
     binom_probs = new double *[max_c];
     for (int gj = 0; gj < max_c; gj++){
@@ -293,9 +294,12 @@ void init_aux_arr(double **&binom_probs, double **&binom_sums, double **&pneigh,
         pneigh[j] = new double[2];
     }
 
-    cj = new int *[max_c + 1];
-    for (int h = 0; h < max_c + 1; h++){
-        cj[h] = new int[K - 1];
+    cj = new int **[2];
+    for (int s = 0; s < 2; s++){
+        cj[s] = new int *[max_c + 1];
+        for (int h = 0; h < max_c + 1; h++){
+            cj[s][h] = new int[K - 1];
+        }
     }
 }
 
@@ -368,32 +372,95 @@ double rate_walksat(int E0, int S, int K, double q, double Eav, int **cj,
     return q * E0 / Eav / K + (1 - q) * cumul / Eav / K; 
 }
 
-// it does the sum in the derivative of the CDA equations
-double sum_walksat(long node, Tnode *nodes, Thedge *hedges, double **pu_cond, int **cj, 
-                   double **binom_probs, double **binom_sums, double **pneigh, int K, 
-                   int nch_fn, double q, double Eav){
-    
-    int w, idx_c_2, E0;
-    double r, cumul = 0;
-    for (long ch = 0; ch < nodes[node].nch; ch++){
-        E0 = 0;
-        for (int hind = 0; hind < nodes[node].nfacn; hind++){
-            if ((ch >> hind) & 1){
-                for (int h = 0; h < K - 1; h++){
-                    cj[E0][h] = 
-                            nodes[hedges[nodes[node].fn_in[hind]].nodes_exc[nodes[node].pos_fn]].nfacn;
-                    // It's the connectivity of one of the other nodes inside the factor node: 
-                    // 'he = nodes[node].fn_in[hind]'
-                }
-                E0++;
+
+// it computes the conditional probabilities of having a partially unsatisfied clause, given the 
+// value of one variable in the clause
+void comp_pcond(double **prob_joint, double ***pu_cond, double **pi, Thedge *hedges, long M, int K, 
+                int nch_fn){
+    double pu;
+    int bit;
+    for (long he = 0; he < M; he++){
+        pu = prob_joint[he][hedges[he].ch_unsat];
+        for (int w = 0; w < K; w++){
+            for (int s = 0; s < 2; s++){
+                pi[w][s] = 0;
             }
         }
 
-        r = rate_walksat(E0, nodes[node].nfacn - E0, K, q, Eav, cj, binom_probs, 
-                         binom_sums, pneigh, nch_fn);
-        cumul += r;
+        for (int ch = 0; ch < nch_fn; ch++){
+            for (int w = 0; w < K; w++){
+                bit = ((ch >> w) & 1);
+                pi[w][bit]  += prob_joint[he][ch];
+            }
+        }
+
+        for (int w = 0; w < K; w++){
+            for (int s = 0; s < 2; s++){
+                pu_cond[he][w][s] = pu / pi[w][s];
+            }
+        }
     }
-    return r;
+}
+
+
+// It takes the product over all the conditional probabilities of the neighboring factor nodes,
+// except for the origin fn_src
+double prodcond(double ***pu_cond, int fn_src, Tnode node, int s, long ch){
+    double prod = 1;
+    int bit;
+    for (int other = 0; other < node.nfacn - 1; other++){
+        bit = ((ch >> other) & 1);
+        prod *= bit + (1 - 2 * bit) * pu_cond[node.fn_exc[fn_src][other]][node.pos_fn_exc[fn_src][other]][s];
+    }
+    return prod;
+}
+
+
+// it does the sum in the derivative of the CDA equations
+// fn_src is the origin factor node where one is computing the derivative
+// part_uns is 1 if the other variables in fn_src are partially
+// unsatisfying their links, and is 0 otherwise. 
+void sum_walksat(long node, int fn_src, int part_uns, Tnode *nodes, Thedge *hedges, 
+                   double *prob_joint, double ***pu_cond, int ***cj, double **binom_probs, 
+                   double **binom_sums, double **pneigh, int K, int nch_fn, double q, 
+                   double Eav, double *me_sum_src){
+    
+    int E[2], he, plc_he;
+    double r[2], prod[2];
+    int plc_src = nodes[node].pos_fn[fn_src];
+    bool cond, bit;
+    for (long ch = 0; ch < nodes[node].nch / 2; ch++){
+        prod[0] = prodcond(pu_cond, fn_src, nodes[node], 0, ch);
+        prod[1] = prodcond(pu_cond, fn_src, nodes[node], 1, ch);
+        E[0] = 0;
+        E[1] = 0;
+        for (int other = 0; other < nodes[node].nfacn - 1; other++){
+            if ((ch >> other) & 1){
+                he = nodes[node].fn_exc[fn_src][other];
+                plc_he = nodes[node].pos_fn_exc[fn_src][other];
+                cond = ((hedges[he].ch_unsat >> plc_he) ^ 0);  // if s=0 unsatisfies the clause, 
+                // cond = 0 (false), otherwise cond = 1.
+                for (int h = 0; h < K - 1; h++){
+                    cj[cond][E[cond]][h] = 
+                            nodes[hedges[he].nodes_exc[plc_src][h]].nfacn;
+                    // It's the connectivity of one of the other nodes inside the factor node: 
+                    // 'he = nodes[node].fn_in[hind]'
+                }
+                E[cond]++;
+            }
+        }
+
+        r[0] = rate_walksat(E[0], nodes[node].nfacn - E[0], K, q, Eav, cj[0], binom_probs, 
+                            binom_sums, pneigh, nch_fn);
+        r[1] = rate_walksat(E[1], nodes[node].nfacn - E[1], K, q, Eav, cj[1], binom_probs, 
+                            binom_sums, pneigh, nch_fn);
+        
+        for (int ch_src = 0; ch_src < nch_fn; ch_src++){
+            bit = ((ch_src >> plc_src) & 1);
+            me_sum_src[ch_src] += -r[bit] * prod[bit] * prob_joint[ch_src] + 
+                                  r[1 - bit] * prod[1 - bit] * prob_joint[ch_src ^ (1 << plc_src)];
+        }
+    }
 }
 
 
@@ -406,12 +473,13 @@ int main(int argc, char *argv[]) {
     double q = atof(argv[6]);
 
     int nch_fn = (1 << K);
+    double p0 = 0.5;
 
     Tnode *nodes;
     Thedge *hedges;
     double **binom_probs, **binom_sums, **pneigh;
-    int **cj;
-    double **pu_cond;
+    int ***cj;
+    double **prob_joint, ***pu_cond, **me_sum, **pi;
 
     gsl_rng * r;
     init_ran(r, seed_r);
@@ -428,8 +496,13 @@ int main(int argc, char *argv[]) {
     double pu_av = 0.3;
     double Eav = pu_av * M;
     get_all_binom_sums(max_c, pu_av, binom_probs, binom_sums);
-    sum_walksat(10, nodes, hedges, pu_cond, cj, binom_probs, binom_sums, pneigh, K, nch_fn, 
-                q, Eav);
+
+    int he_src = nodes[10].fn_in[0];
+    init_probs(prob_joint, pu_cond, pi, me_sum, M, K, nch_fn, p0);
+    comp_pcond(prob_joint, pu_cond, pi, hedges, M, K, nch_fn);
+
+    sum_walksat(10, 0, 1, nodes, hedges, prob_joint[he_src], pu_cond, cj, binom_probs, 
+                binom_sums, pneigh, K, nch_fn, q, Eav, me_sum[he_src]);
 
     return 0;
 }
