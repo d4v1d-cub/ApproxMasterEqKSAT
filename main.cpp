@@ -248,6 +248,7 @@ void init_probs(double **&prob_joint, double ***&pu_cond, double **&pi, double *
                 bit = ((ch >> w) & 1);
                 prod *= (bit + (1 - 2 * bit) * p0);
             }
+            prob_joint[he][ch] = prod;
         }
 
         pu_cond[he] = new double*[K];
@@ -390,7 +391,7 @@ void comp_pcond(double **prob_joint, double ***pu_cond, double **pi, Thedge *hed
         for (int ch = 0; ch < nch_fn; ch++){
             for (int w = 0; w < K; w++){
                 bit = ((ch >> w) & 1);
-                pi[w][bit]  += prob_joint[he][ch];
+                pi[w][bit] += prob_joint[he][ch];
             }
         }
 
@@ -410,7 +411,8 @@ double prodcond(double ***pu_cond, int fn_src, Tnode node, int s, long ch){
     int bit;
     for (int other = 0; other < node.nfacn - 1; other++){
         bit = ((ch >> other) & 1);
-        prod *= bit + (1 - 2 * bit) * pu_cond[node.fn_exc[fn_src][other]][node.pos_fn_exc[fn_src][other]][s];
+        prod *= 1 - bit - 
+                (1 - 2 * bit) * pu_cond[node.fn_exc[fn_src][other]][node.pos_fn_exc[fn_src][other]][s];
     }
     return prod;
 }
@@ -428,7 +430,7 @@ void sum_walksat(long node, int fn_src, int part_uns, Tnode *nodes, Thedge *hedg
     int E[2], he, plc_he;
     double r[2], prod[2];
     int plc_src = nodes[node].pos_fn[fn_src];
-    bool cond, bit;
+    bool bit;
     for (long ch = 0; ch < nodes[node].nch / 2; ch++){
         prod[0] = prodcond(pu_cond, fn_src, nodes[node], 0, ch);
         prod[1] = prodcond(pu_cond, fn_src, nodes[node], 1, ch);
@@ -438,15 +440,15 @@ void sum_walksat(long node, int fn_src, int part_uns, Tnode *nodes, Thedge *hedg
             if ((ch >> other) & 1){
                 he = nodes[node].fn_exc[fn_src][other];
                 plc_he = nodes[node].pos_fn_exc[fn_src][other];
-                cond = ((hedges[he].ch_unsat >> plc_he) ^ 0);  // if s=0 unsatisfies the clause, 
+                bit = ((hedges[he].ch_unsat >> plc_he) & 1);  // if s=0 unsatisfies the clause, 
                 // cond = 0 (false), otherwise cond = 1.
                 for (int h = 0; h < K - 1; h++){
-                    cj[cond][E[cond]][h] = 
+                    cj[bit][E[bit]][h] = 
                             nodes[hedges[he].nodes_exc[plc_src][h]].nfacn;
                     // It's the connectivity of one of the other nodes inside the factor node: 
                     // 'he = nodes[node].fn_in[hind]'
                 }
-                E[cond]++;
+                E[bit]++;
             }
         }
 
@@ -491,6 +493,7 @@ int main(int argc, char *argv[]) {
 
     create_graph(N, M, K, nodes, hedges, r);
     int max_c = get_max_c(nodes, N);
+    get_info_exc(nodes, hedges, N, M, K);
 
     init_aux_arr(binom_probs, binom_sums, pneigh, cj, max_c, K);
     double pu_av = 0.3;
