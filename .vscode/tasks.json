@@ -12,7 +12,8 @@
                 "${fileDirname}/Debug/CDA_KSAT.out",
                 "-lgsl",
                 "-lgslcblas",
-                "-lm"
+                "-lm", 
+                "-fopenmp"
             ],
             "options": {
                 "cwd": "${fileDirname}"

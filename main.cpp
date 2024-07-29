@@ -5,12 +5,10 @@
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_cdf.h>
 #include <cmath>
+#include <omp.h>
+#include <chrono>
 
 using namespace std;
-
-
-int E[2];
-double r[2][2], prod[2];
     
 
 
@@ -302,8 +300,7 @@ double rate_fms(int E0, int E1, int K, double eta, double Eav){
 // initializes the arrays where the binomial weights will be stored. Those arrays are used 
 // to compute the probability of selecting the variable belonging to the smallest number 
 // of satisfied clauses
-void init_aux_arr(double **&binom_probs, double **&binom_sums, double **&pneigh, int ***&cj, 
-                  int max_c, int K){
+void init_aux_arr(double **&binom_probs, double **&binom_sums, int max_c, int K){
     binom_probs = new double *[max_c];
     for (int gj = 0; gj < max_c; gj++){
         binom_probs[gj] = new double[gj + 1];
@@ -312,19 +309,6 @@ void init_aux_arr(double **&binom_probs, double **&binom_sums, double **&pneigh,
     binom_sums = new double *[max_c + 1];
     for (int s = 0; s < max_c + 1; s++){
         binom_sums[s] = new double[max_c];
-    }
-    
-    pneigh = new double *[K - 1];
-    for (int j = 0; j < K - 1; j++){
-        pneigh[j] = new double[2];
-    }
-
-    cj = new int **[2];
-    for (int s = 0; s < 2; s++){
-        cj[s] = new int *[max_c + 1];
-        for (int h = 0; h < max_c + 1; h++){
-            cj[s][h] = new int[K - 1];
-        }
     }
 }
 
@@ -447,12 +431,34 @@ double prodcond(double ***pu_cond, int fn_src, Tnode node, int s, long ch){
 // part_uns is 1 if the other variables in fn_src are partially
 // unsatisfying their links, and is 0 otherwise. 
 void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges, 
-                   double *prob_joint, double ***pu_cond, int ***cj, double **binom_probs, 
-                   double **binom_sums, double **pneigh, int K, int nch_fn, double q, 
-                   double Eav, double *me_sum_src){
+                 double *prob_joint, double ***pu_cond, double **binom_probs, 
+                 double **binom_sums, int K, int nch_fn, double q, 
+                 double Eav, double *me_sum_src, int max_c){
     int he, plc_he;
     bool bit, uns, uns_flip;
     int ch_flip;
+    double prod[2], r[2][2];
+    int E[2];
+    double **pneigh = (double **) malloc((K - 1) * sizeof(double *));
+    // pneigh = new double *[K - 1];
+    for (int j = 0; j < K - 1; j++){
+        // pneigh[j] = new double[2];
+        pneigh[j] = (double*) malloc(2 * sizeof(double));
+    }
+
+    int ***cj = (int ***) malloc (2 * sizeof(int **));
+    // cj = new int **[2];
+    for (int s = 0; s < 2; s++){
+        // cj[s] = new int *[max_c + 1];
+        cj[s] = (int **) malloc ((max_c + 1) * sizeof(int *));
+        for (int h = 0; h < max_c + 1; h++){
+            cj[s][h] = (int *) malloc ((K - 1) * sizeof(int));
+            // cj[s][h] = new int[K - 1];
+        }
+    }
+
+    
+
     for (long ch = 0; ch < nodes[node].nch / 2; ch++){
         prod[0] = prodcond(pu_cond, fn_src, nodes[node], 0, ch);
         prod[1] = prodcond(pu_cond, fn_src, nodes[node], 1, ch);
@@ -498,16 +504,21 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
             uns = (ch_src == hedges[he].ch_unsat);
             uns_flip = (ch_flip == hedges[he].ch_unsat);
             me_sum_src[ch_src] += -r[bit][uns] * prod[bit] * prob_joint[ch_src] + 
-                                  r[1 - bit][uns_flip] * prod[1 - bit] * prob_joint[ch_src ^ (1 << plc_he)];
+                                  r[1 - bit][uns_flip] * prod[1 - bit] * prob_joint[ch_flip];
         }
     }
+
+    // delete []pneigh;
+    // delete []cj;
+    free(pneigh);
+    free(cj);
 }
 
 
 // it computes all the derivatives of the joint probabilities
 void der_walksat(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***pu_cond, 
-                 int ***cj, double **binom_probs, double **binom_sums, double **pneigh, 
-                 long M, int K, int nch_fn, double q, double Eav, double **me_sum){
+                 double **binom_probs, double **binom_sums, long M, int K, int nch_fn, 
+                 double q, double Eav, double **me_sum, int max_c){
     for (long he = 0; he < M; he++){
         for (int ch = 0; ch < nch_fn; ch++){
             me_sum[he][ch] = 0;
@@ -515,11 +526,13 @@ void der_walksat(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***pu
     }
 
     // candidate to be a parallel for
+    #pragma omp parallel for
     for (long he = 0; he < M; he++){
+        
         for (int w = 0; w < K; w++){
             sum_walksat(hedges[he].nodes_in[w], hedges[he].pos_n[w], nodes, hedges, 
-                        prob_joint[he], pu_cond, cj, binom_probs, binom_sums, pneigh, K, nch_fn,
-                        q, Eav, me_sum[he]);
+                        prob_joint[he], pu_cond, binom_probs, binom_sums, K, nch_fn,
+                        q, Eav, me_sum[he], max_c);
         }
     }
 }
@@ -539,13 +552,13 @@ double energy(double **prob_joint, Thedge *hedges, long M){
 void RK2_walksat(Tnode *nodes, Thedge *hedges, long M, int K, int nch_fn, double q, int max_c, 
                  double p0, char *fileener, double tl, double t0 = 0, double dt0 = 0.1, 
                  double ef = 1e-6, double tol = 1e-2, double dt_min = 1e-7){
-    double **binom_probs, **binom_sums, **pneigh;
+    double **binom_probs, **binom_sums;
     int ***cj;
     double **prob_joint, ***pu_cond, **me_sum, **pi;
     double e, pu_av, error;                 
                  
     // initalize all arrays that will be used inside the derivative
-    init_aux_arr(binom_probs, binom_sums, pneigh, cj, max_c, K);
+    init_aux_arr(binom_probs, binom_sums, max_c, K);
     init_probs(prob_joint, pu_cond, pi, me_sum, M, K, nch_fn, p0);
 
 
@@ -572,11 +585,13 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long M, int K, int nch_fn, double
             break;
         }
 
+        auto t1 = std::chrono::high_resolution_clock::now();
+
         comp_pcond(prob_joint, pu_cond, pi, hedges, M, K, nch_fn);
         get_all_binom_sums(max_c, pu_av, binom_probs, binom_sums);
 
-        der_walksat(nodes, hedges, prob_joint, pu_cond, cj, binom_probs, binom_sums, pneigh, 
-                    M, K, nch_fn, q, e, me_sum);
+        der_walksat(nodes, hedges, prob_joint, pu_cond, binom_probs, binom_sums, 
+                    M, K, nch_fn, q, e, me_sum, max_c);
 
         for (long he = 0; he < M; he++){
             for (int ch = 0; ch < nch_fn; ch++){
@@ -590,8 +605,8 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long M, int K, int nch_fn, double
         comp_pcond(prob_joint_1, pu_cond, pi, hedges, M, K, nch_fn);
         get_all_binom_sums(max_c, pu_av, binom_probs, binom_sums);
 
-        der_walksat(nodes, hedges, prob_joint_1, pu_cond, cj, binom_probs, binom_sums, pneigh, 
-                    M, K, nch_fn, q, e, me_sum);
+        der_walksat(nodes, hedges, prob_joint_1, pu_cond, binom_probs, binom_sums, 
+                    M, K, nch_fn, q, e, me_sum, max_c);
         
         valid = true;
         for (long he = 0; he < M; he++){
@@ -615,10 +630,12 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long M, int K, int nch_fn, double
             error = 0;
             for (long he = 0; he < M; he++){
                 for (int ch = 0; ch < nch_fn; ch++){
-                    error += fabs(k1[he][ch] - k2[he][ch]);
+                    if (fabs(k1[he][ch] - k2[he][ch]) > error){
+                        error = fabs(k1[he][ch] - k2[he][ch]) / 
+                                max(fabs(k1[he][ch]), fabs(k2[he][ch]));
+                    }
                 }
             }
-            error /= M * nch_fn;
 
             if (error < 2 * tol){
                 cout << "step dt=" << dt1 << "  accepted" << endl;
@@ -648,7 +665,15 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long M, int K, int nch_fn, double
             cout << "Recommended step is dt=" << dt1 << endl;
         }
 
+        auto t2 = std::chrono::high_resolution_clock::now();
+
+        auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
+
+        cout << endl << "iteration time:   " << ms_int.count() << "ms" << endl; 
+
     }
+
+    fe.close();
 
 }
 
@@ -661,10 +686,13 @@ int main(int argc, char *argv[]) {
     double q = atof(argv[5]);
     double tl = atof(argv[6]);
     double tol = atof(argv[7]);
+    int nthr = atoi(argv[8]);
 
     int nch_fn = (1 << K);
     double p0 = 0.5;
     double t0 = 0;
+
+    omp_set_num_threads(nthr);
 
     Tnode *nodes;
     Thedge *hedges;
@@ -678,7 +706,7 @@ int main(int argc, char *argv[]) {
     // sprintf(filelinks, "KSAT_K_%d_enlaces_N_%li_M_%li_idumenlaces_%li_idumgraph_%li_ordered.txt", K, N, M, seed_g, seed_g);
 
     char fileener[300]; 
-    sprintf(fileener, "CDA_WalkSAT_K_%d_N_%li_M_%li_q_%.3lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
+    sprintf(fileener, "CDA_WalkSAT_ener_K_%d_N_%li_M_%li_q_%.3lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
             K, N, M, q, tl, seed_r, tol);
 
     create_graph(N, M, K, nodes, hedges, r);
