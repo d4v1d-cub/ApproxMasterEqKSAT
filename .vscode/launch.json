@@ -5,7 +5,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${fileDirname}/Debug/CDA_KSAT.out",
-            "args": ["100", "240", "3", "-2", "1", "0.5"],
+            "args": ["100", "240", "3", "1", "0.5", "1.0", "1e-2"],
             "stopAtEntry": false,
             "cwd": "${fileDirname}/Debug",
             "environment": [],

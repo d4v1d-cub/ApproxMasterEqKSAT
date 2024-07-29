@@ -10,7 +10,7 @@ using namespace std;
 
 
 int E[2];
-double r[2], prod[2];
+double r[2][2], prod[2];
     
 
 
@@ -269,6 +269,25 @@ void init_probs(double **&prob_joint, double ***&pu_cond, double **&pi, double *
 }
 
 
+// initializes the auxiliary arrays for the Runge-Kutta integration
+void init_RK_arr(double **&k1, double **&k2, double **&prob_joint_1, long M, 
+                int nch_fn){
+    k1 = new double *[M];
+    k2 = new double *[M];
+    prob_joint_1 = new double *[M];
+    for (long he = 0; he < M; he++){
+        k1[he] = new double [nch_fn];
+        k2[he] = new double [nch_fn];
+        prob_joint_1[he] = new double [nch_fn];
+        for (int ch = 0; ch < nch_fn; ch++){
+            k1[he][ch] = 0;
+            k2[he][ch] = 0;
+            prob_joint_1[he][ch] = 0;
+        }
+    }
+}
+
+
 // rate of the Focused Metropolis Search algorithm.
 double rate_fms(int E0, int E1, int K, double eta, double Eav){
     double dE = E1 - E0;
@@ -427,13 +446,13 @@ double prodcond(double ***pu_cond, int fn_src, Tnode node, int s, long ch){
 // fn_src is the origin factor node where one is computing the derivative
 // part_uns is 1 if the other variables in fn_src are partially
 // unsatisfying their links, and is 0 otherwise. 
-void sum_walksat(long node, int fn_src, int part_uns, Tnode *nodes, Thedge *hedges, 
+void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges, 
                    double *prob_joint, double ***pu_cond, int ***cj, double **binom_probs, 
                    double **binom_sums, double **pneigh, int K, int nch_fn, double q, 
                    double Eav, double *me_sum_src){
     int he, plc_he;
-    int plc_src = nodes[node].pos_fn[fn_src];
-    bool bit;
+    bool bit, uns, uns_flip;
+    int ch_flip;
     for (long ch = 0; ch < nodes[node].nch / 2; ch++){
         prod[0] = prodcond(pu_cond, fn_src, nodes[node], 0, ch);
         prod[1] = prodcond(pu_cond, fn_src, nodes[node], 1, ch);
@@ -447,7 +466,7 @@ void sum_walksat(long node, int fn_src, int part_uns, Tnode *nodes, Thedge *hedg
                 // cond = 0 (false), otherwise cond = 1.
                 for (int h = 0; h < K - 1; h++){
                     cj[bit][E[bit]][h] = 
-                            nodes[hedges[he].nodes_exc[plc_src][h]].nfacn;
+                            nodes[hedges[he].nodes_exc[plc_he][h]].nfacn;
                     // It's the connectivity of one of the other nodes inside the factor node: 
                     // 'he = nodes[node].fn_in[hind]'
                 }
@@ -455,17 +474,182 @@ void sum_walksat(long node, int fn_src, int part_uns, Tnode *nodes, Thedge *hedg
             }
         }
 
-        r[0] = rate_walksat(E[0], nodes[node].nfacn - E[0], K, q, Eav, cj[0], binom_probs, 
+        r[0][0] = rate_walksat(E[0], nodes[node].nfacn - E[0], K, q, Eav, cj[0], binom_probs, 
                             binom_sums, pneigh, nch_fn);
-        r[1] = rate_walksat(E[1], nodes[node].nfacn - E[1], K, q, Eav, cj[1], binom_probs, 
+        r[1][0] = rate_walksat(E[1], nodes[node].nfacn - E[1], K, q, Eav, cj[1], binom_probs, 
+                            binom_sums, pneigh, nch_fn);
+
+        he = nodes[node].fn_in[fn_src];
+        plc_he = nodes[node].pos_fn[fn_src];
+        bit = ((hedges[he].ch_unsat >> plc_he) & 1);  
+        for (int h = 0; h < K - 1; h++){
+            cj[bit][E[bit]][h] = 
+                nodes[hedges[he].nodes_exc[plc_he][h]].nfacn;
+                    // It's the connectivity of one of the other nodes inside the factor node: 
+                    // 'he = nodes[node].fn_in[hind]'
+        }
+
+        r[bit][1] = rate_walksat(E[bit] + 1, nodes[node].nfacn - E[bit] - 1, K, q, Eav, cj[bit], binom_probs, 
                             binom_sums, pneigh, nch_fn);
         
         for (int ch_src = 0; ch_src < nch_fn; ch_src++){
-            bit = ((ch_src >> plc_src) & 1);
-            me_sum_src[ch_src] += -r[bit] * prod[bit] * prob_joint[ch_src] + 
-                                  r[1 - bit] * prod[1 - bit] * prob_joint[ch_src ^ (1 << plc_src)];
+            bit = ((ch_src >> plc_he) & 1);
+            ch_flip = (ch_src ^ (1 << plc_he));
+            uns = (ch_src == hedges[he].ch_unsat);
+            uns_flip = (ch_flip == hedges[he].ch_unsat);
+            me_sum_src[ch_src] += -r[bit][uns] * prod[bit] * prob_joint[ch_src] + 
+                                  r[1 - bit][uns_flip] * prod[1 - bit] * prob_joint[ch_src ^ (1 << plc_he)];
         }
     }
+}
+
+
+// it computes all the derivatives of the joint probabilities
+void der_walksat(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***pu_cond, 
+                 int ***cj, double **binom_probs, double **binom_sums, double **pneigh, 
+                 long M, int K, int nch_fn, double q, double Eav, double **me_sum){
+    for (long he = 0; he < M; he++){
+        for (int ch = 0; ch < nch_fn; ch++){
+            me_sum[he][ch] = 0;
+        }
+    }
+
+    // candidate to be a parallel for
+    for (long he = 0; he < M; he++){
+        for (int w = 0; w < K; w++){
+            sum_walksat(hedges[he].nodes_in[w], hedges[he].pos_n[w], nodes, hedges, 
+                        prob_joint[he], pu_cond, cj, binom_probs, binom_sums, pneigh, K, nch_fn,
+                        q, Eav, me_sum[he]);
+        }
+    }
+}
+
+
+double energy(double **prob_joint, Thedge *hedges, long M){
+    double e = 0;
+    for (long he = 0; he < M; he++){
+        e += prob_joint[he][hedges[he].ch_unsat];
+    }
+    return e;
+}
+
+
+// peforms the integration of the differential equations with the 2nd order Runge-Kutta
+// the method is implemented with adaptive step size
+void RK2_walksat(Tnode *nodes, Thedge *hedges, long M, int K, int nch_fn, double q, int max_c, 
+                 double p0, char *fileener, double tl, double t0 = 0, double dt0 = 0.1, 
+                 double ef = 1e-6, double tol = 1e-2, double dt_min = 1e-7){
+    double **binom_probs, **binom_sums, **pneigh;
+    int ***cj;
+    double **prob_joint, ***pu_cond, **me_sum, **pi;
+    double e, pu_av, error;                 
+                 
+    // initalize all arrays that will be used inside the derivative
+    init_aux_arr(binom_probs, binom_sums, pneigh, cj, max_c, K);
+    init_probs(prob_joint, pu_cond, pi, me_sum, M, K, nch_fn, p0);
+
+
+
+    // initialize auxiliary arrays for the Runge-Kutta integration
+    double **k1, **k2, **prob_joint_1;
+    init_RK_arr(k1, k2, prob_joint_1, M, nch_fn);
+
+    ofstream fe(fileener);
+    
+    e = energy(prob_joint, hedges, M);
+    pu_av = e / M;
+    fe << t0 << "\t" << e << endl;
+    cout << t0 << "\t" << e << endl;
+
+    double dt1 = dt0;
+    double t = t0;
+
+    bool valid;
+
+    while (t < tl){
+        if (e < ef){
+            cout << "Final energy reached" << endl;
+            break;
+        }
+
+        comp_pcond(prob_joint, pu_cond, pi, hedges, M, K, nch_fn);
+        get_all_binom_sums(max_c, pu_av, binom_probs, binom_sums);
+
+        der_walksat(nodes, hedges, prob_joint, pu_cond, cj, binom_probs, binom_sums, pneigh, 
+                    M, K, nch_fn, q, e, me_sum);
+
+        for (long he = 0; he < M; he++){
+            for (int ch = 0; ch < nch_fn; ch++){
+                k1[he][ch] = dt1 * me_sum[he][ch];
+                prob_joint_1[he][ch] = prob_joint[he][ch] + k1[he][ch];
+            }
+        }
+
+        e = energy(prob_joint_1, hedges, M);
+        pu_av = e / M;
+        comp_pcond(prob_joint_1, pu_cond, pi, hedges, M, K, nch_fn);
+        get_all_binom_sums(max_c, pu_av, binom_probs, binom_sums);
+
+        der_walksat(nodes, hedges, prob_joint_1, pu_cond, cj, binom_probs, binom_sums, pneigh, 
+                    M, K, nch_fn, q, e, me_sum);
+        
+        valid = true;
+        for (long he = 0; he < M; he++){
+            for (int ch = 0; ch < nch_fn; ch++){
+                k2[he][ch] = dt1 * me_sum[he][ch];
+                if (prob_joint[he][ch] + (k1[he][ch] + k2[he][ch]) / 2 < 0){
+                    valid = false;
+                }
+            }
+        }
+
+        if (!valid){
+            cout << "Some probabilities would be negative if dt=" << dt1 << " is taken" << endl;
+            dt1 /= 2;
+            cout << "step divided by half" << endl;
+            if (dt1 < dt_min){
+                dt_min /= 2;
+                cout << "dt_min also halfed" << endl;
+            }
+        }else{
+            error = 0;
+            for (long he = 0; he < M; he++){
+                for (int ch = 0; ch < nch_fn; ch++){
+                    error += fabs(k1[he][ch] - k2[he][ch]);
+                }
+            }
+            error /= M * nch_fn;
+
+            if (error < 2 * tol){
+                cout << "step dt=" << dt1 << "  accepted" << endl;
+                t += dt1;
+                for (long he = 0; he < M; he++){
+                    for (int ch = 0; ch < nch_fn; ch++){
+                        prob_joint[he][ch] += (k1[he][ch] + k2[he][ch]) / 2;
+                    }
+                }
+                e = energy(prob_joint, hedges, M);
+                pu_av = e / M;
+                fe << t << "\t" << e << endl;
+                cout << t << "\t" << e << endl;
+
+            }else{
+                cout << "step dt=" << dt1 << "  rejected  new step will be attempted" << endl;
+                cout << "error=" <<  error << endl;
+            }
+
+            dt1 = 4 * dt1 * sqrt(2 * tol / error) / 5;
+            if (dt1 > M){
+                dt1 = M;
+            }else if(dt1 < dt_min){
+                dt1 = dt_min;
+            }
+
+            cout << "Recommended step is dt=" << dt1 << endl;
+        }
+
+    }
+
 }
 
 
@@ -473,18 +657,17 @@ int main(int argc, char *argv[]) {
     long N = atol(argv[1]);
     long M = atol(argv[2]);
     int K = atoi(argv[3]);
-    long seed_g = atol(argv[4]);
-    unsigned long seed_r = atol(argv[5]);
-    double q = atof(argv[6]);
+    unsigned long seed_r = atol(argv[4]);
+    double q = atof(argv[5]);
+    double tl = atof(argv[6]);
+    double tol = atof(argv[7]);
 
     int nch_fn = (1 << K);
     double p0 = 0.5;
+    double t0 = 0;
 
     Tnode *nodes;
     Thedge *hedges;
-    double **binom_probs, **binom_sums, **pneigh;
-    int ***cj;
-    double **prob_joint, ***pu_cond, **me_sum, **pi;
 
     gsl_rng * r;
     init_ran(r, seed_r);
@@ -494,21 +677,16 @@ int main(int argc, char *argv[]) {
     // sprintf(filegraph, "KSATgraph_K_%d_N_%li_M_%li_simetric_1_model_1_idum1_%li_J_1_ordered.txt", K, N, M, seed_g);
     // sprintf(filelinks, "KSAT_K_%d_enlaces_N_%li_M_%li_idumenlaces_%li_idumgraph_%li_ordered.txt", K, N, M, seed_g, seed_g);
 
+    char fileener[300]; 
+    sprintf(fileener, "CDA_WalkSAT_K_%d_N_%li_M_%li_q_%.3lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
+            K, N, M, q, tl, seed_r, tol);
+
     create_graph(N, M, K, nodes, hedges, r);
     int max_c = get_max_c(nodes, N);
     get_info_exc(nodes, hedges, N, M, K);
 
-    init_aux_arr(binom_probs, binom_sums, pneigh, cj, max_c, K);
-    double pu_av = 0.3;
-    double Eav = pu_av * M;
-    get_all_binom_sums(max_c, pu_av, binom_probs, binom_sums);
-
-    int he_src = nodes[10].fn_in[0];
-    init_probs(prob_joint, pu_cond, pi, me_sum, M, K, nch_fn, p0);
-    comp_pcond(prob_joint, pu_cond, pi, hedges, M, K, nch_fn);
-
-    sum_walksat(10, 0, 1, nodes, hedges, prob_joint[he_src], pu_cond, cj, binom_probs, 
-                binom_sums, pneigh, K, nch_fn, q, Eav, me_sum[he_src]);
+    
+    RK2_walksat(nodes, hedges, M, K, nch_fn, q, max_c, p0, fileener, tl, tol=tol);
 
     return 0;
 }
