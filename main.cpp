@@ -440,20 +440,15 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
     double prod[2], r[2][2];
     int E[2];
     double **pneigh = (double **) malloc((K - 1) * sizeof(double *));
-    // pneigh = new double *[K - 1];
     for (int j = 0; j < K - 1; j++){
-        // pneigh[j] = new double[2];
         pneigh[j] = (double*) malloc(2 * sizeof(double));
     }
 
     int ***cj = (int ***) malloc (2 * sizeof(int **));
-    // cj = new int **[2];
     for (int s = 0; s < 2; s++){
-        // cj[s] = new int *[max_c + 1];
         cj[s] = (int **) malloc ((max_c + 1) * sizeof(int *));
         for (int h = 0; h < max_c + 1; h++){
             cj[s][h] = (int *) malloc ((K - 1) * sizeof(int));
-            // cj[s][h] = new int[K - 1];
         }
     }
 
@@ -572,7 +567,6 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long M, int K, int nch_fn, double
     e = energy(prob_joint, hedges, M);
     pu_av = e / M;
     fe << t0 << "\t" << e << endl;
-    cout << t0 << "\t" << e << endl;
 
     double dt1 = dt0;
     double t = t0;
@@ -648,7 +642,6 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long M, int K, int nch_fn, double
                 e = energy(prob_joint, hedges, M);
                 pu_av = e / M;
                 fe << t << "\t" << e << endl;
-                cout << t << "\t" << e << endl;
 
             }else{
                 cout << "step dt=" << dt1 << "  rejected  new step will be attempted" << endl;
