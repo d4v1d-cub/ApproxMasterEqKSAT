@@ -545,7 +545,7 @@ double energy(double **prob_joint, Thedge *hedges, long M){
 // peforms the integration of the differential equations with the 2nd order Runge-Kutta
 // the method is implemented with adaptive step size
 void RK2_walksat(Tnode *nodes, Thedge *hedges, long M, int K, int nch_fn, double q, int max_c, 
-                 double p0, char *fileener, double tl, double t0 = 0, double dt0 = 0.1, 
+                 double p0, char *fileener, double tl, double t0 = 0, double dt0 = 0.01, 
                  double ef = 1e-6, double tol = 1e-2, double dt_min = 1e-7){
     double **binom_probs, **binom_sums;
     int ***cj;
