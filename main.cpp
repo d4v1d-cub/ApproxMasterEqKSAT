@@ -144,6 +144,14 @@ void read_links(char *filelinks, long N, long M, int K, Tnode *nodes, Thedge *he
     fl.close();
 }
 
+double av(Thedge *hedges, long M){
+    double answ = 0;
+    for (long i = 0; i < M; i++){
+        answ += hedges[i].nodes_in.size();
+    }
+    return answ / M;
+}
+
 // This function creates at run time.
 void create_graph(long N, long M, int K, Tnode *&nodes, Thedge *&hedges, gsl_rng * r){
     init_graph(nodes, hedges, N, M);
@@ -182,7 +190,7 @@ void create_graph(long N, long M, int K, Tnode *&nodes, Thedge *&hedges, gsl_rng
     }
 
     for (long i = 0; i < N; i++){
-        nodes[i].nch = (1 << nodes[i].nfacn);
+            nodes[i].nch = (long) pow(2, nodes[i].nfacn);
     }
 }
 
@@ -306,9 +314,9 @@ void init_aux_arr(double **&binom_probs, double **&binom_sums, int max_c, int K)
         binom_probs[gj] = new double[gj + 1];
     }
 
-    binom_sums = new double *[max_c + 1];
-    for (int s = 0; s < max_c + 1; s++){
-        binom_sums[s] = new double[max_c];
+    binom_sums = new double *[max_c];
+    for (int s = 0; s < max_c; s++){
+        binom_sums[s] = new double[max_c - s];
     }
 }
 
@@ -322,9 +330,9 @@ void get_all_binom_sums(int max_c, double pu_av, double **binom_probs,
         }
     }
     
-    for (int si = 0; si < max_c + 1; si++){
-        for (int gj = 0; gj < max_c; gj++){
-            binom_sums[si][gj] = gsl_cdf_binomial_Q(si, 1 - pu_av, gj);
+    for (int si = 0; si < max_c; si++){
+        for (int gj = si; gj < max_c; gj++){
+            binom_sums[si][gj - si] = gsl_cdf_binomial_Q(si, 1 - pu_av, gj);
         }
     }
 }
@@ -335,7 +343,7 @@ void fill_pneigh(int E0, int S, int *cj, double **binom_probs, double **binom_su
                  double **pneigh, int K){
     for (int j = 0; j < K - 1; j++){
         pneigh[j][0] = binom_probs[cj[j] - 1][S];
-        pneigh[j][1] = binom_sums[S][cj[j] - 1];
+        pneigh[j][1] = binom_sums[S][cj[j] - 1 - S];
     }
 }
 
@@ -343,9 +351,11 @@ void fill_pneigh(int E0, int S, int *cj, double **binom_probs, double **binom_su
 // rate of the walksat algorithm used by Barthel et al. in 2003
 // cj is a list of all the connectivities of the neighbors of node i that are 
 // in unsatisfied clauses
+// nch_exc is the number of possible combinations of the K-1 other variables in the clause
+// therefore, nch_exc = 2^(K-1)
 double rate_walksat(int E0, int S, int K, double q, double Eav, int **cj, 
                     double **binom_probs, double **binom_sums, double **pneigh, 
-                    int nchain){
+                    int nch_exc){
     bool cond;
     double cumul, prod;
     int cumul_bits, bit, k;
@@ -355,13 +365,16 @@ double rate_walksat(int E0, int S, int K, double q, double Eav, int **cj,
         k = 0;
         while (k < K - 1 && cond){
             if (cj[fn][k] - 1 < S){
-                cond = false;
+                cond = false;    // if one of the other nodes in the clause has less 
+                // than 'S' neighbors, it cannot belong to more than 'S' satisfied clauses
+                // therefore, the variable for which one is computing the rate cannot be chosen
+                // by walksat dynamics over that neighbor in that specific clause
             }
             k++;
         }
         if (cond){   
             fill_pneigh(E0, S, cj[fn], binom_probs, binom_sums, pneigh, K);
-            for (int ch = 0; ch < nchain; ch++){
+            for (int ch = 0; ch < nch_exc; ch++){
                 prod = 1;
                 cumul_bits = 0;
                 for (int w = 0; w < K - 1; w++){
@@ -476,9 +489,9 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
         }
 
         r[0][0] = rate_walksat(E[0], nodes[node].nfacn - E[0], K, q, Eav, cj[0], binom_probs, 
-                            binom_sums, pneigh, nch_fn);
+                            binom_sums, pneigh, nch_fn / 2);
         r[1][0] = rate_walksat(E[1], nodes[node].nfacn - E[1], K, q, Eav, cj[1], binom_probs, 
-                            binom_sums, pneigh, nch_fn);
+                            binom_sums, pneigh, nch_fn / 2);
 
         he = nodes[node].fn_in[fn_src];
         plc_he = nodes[node].pos_fn[fn_src];
