@@ -295,12 +295,12 @@ void init_RK_arr(double **&k1, double **&k2, double **&prob_joint_1, long M,
 
 
 // rate of the Focused Metropolis Search algorithm.
-double rate_fms(int E0, int E1, int K, double eta, double Eav){
+double rate_fms(int E0, int E1, int K, double eta, double e_av){
     double dE = E1 - E0;
     if (dE > 0){
-        return E0 / K / Eav * pow(eta, -dE);
+        return E0 / K / e_av * pow(eta, -dE);
     }else{
-        return E0 / K / Eav;
+        return E0 / K / e_av;
     }
 }
 
@@ -353,7 +353,7 @@ void fill_pneigh(int E0, int S, int *cj, double **binom_probs, double **binom_su
 // in unsatisfied clauses
 // nch_exc is the number of possible combinations of the K-1 other variables in the clause
 // therefore, nch_exc = 2^(K-1)
-double rate_walksat(int E0, int S, int K, double q, double Eav, int **cj, 
+double rate_walksat(int E0, int S, int K, double q, double e_av, int **cj, 
                     double **binom_probs, double **binom_sums, double **pneigh, 
                     int nch_exc){
     bool cond;
@@ -391,7 +391,7 @@ double rate_walksat(int E0, int S, int K, double q, double Eav, int **cj,
             }
         }
     }
-    return q * E0 / Eav / K + (1 - q) * cumul / Eav / K; 
+    return q * E0 / e_av / K + (1 - q) * cumul / e_av / K; 
 }
 
 
@@ -446,7 +446,7 @@ double prodcond(double ***pu_cond, int fn_src, Tnode node, int s, long ch){
 void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges, 
                  double *prob_joint, double ***pu_cond, double **binom_probs, 
                  double **binom_sums, int K, int nch_fn, double q, 
-                 double Eav, double *me_sum_src, int max_c){
+                 double e_av, double *me_sum_src, int max_c){
     int he, plc_he;
     bool bit, uns, uns_flip;
     int ch_flip;
@@ -459,8 +459,8 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
 
     int ***cj = (int ***) malloc (2 * sizeof(int **));
     for (int s = 0; s < 2; s++){
-        cj[s] = (int **) malloc ((max_c + 1) * sizeof(int *));
-        for (int h = 0; h < max_c + 1; h++){
+        cj[s] = (int **) malloc (max_c * sizeof(int *));
+        for (int h = 0; h < max_c; h++){
             cj[s][h] = (int *) malloc ((K - 1) * sizeof(int));
         }
     }
@@ -477,7 +477,7 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
                 he = nodes[node].fn_exc[fn_src][other];
                 plc_he = nodes[node].pos_fn_exc[fn_src][other];
                 bit = ((hedges[he].ch_unsat >> plc_he) & 1);  // if s=0 unsatisfies the clause, 
-                // cond = 0 (false), otherwise cond = 1.
+                // bit = 0 (false), otherwise bit = 1.
                 for (int h = 0; h < K - 1; h++){
                     cj[bit][E[bit]][h] = 
                             nodes[hedges[he].nodes_exc[plc_he][h]].nfacn;
@@ -488,9 +488,9 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
             }
         }
 
-        r[0][0] = rate_walksat(E[0], nodes[node].nfacn - E[0], K, q, Eav, cj[0], binom_probs, 
+        r[0][0] = rate_walksat(E[0], nodes[node].nfacn - E[0], K, q, e_av, cj[0], binom_probs, 
                             binom_sums, pneigh, nch_fn / 2);
-        r[1][0] = rate_walksat(E[1], nodes[node].nfacn - E[1], K, q, Eav, cj[1], binom_probs, 
+        r[1][0] = rate_walksat(E[1], nodes[node].nfacn - E[1], K, q, e_av, cj[1], binom_probs, 
                             binom_sums, pneigh, nch_fn / 2);
 
         he = nodes[node].fn_in[fn_src];
@@ -503,7 +503,7 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
                     // 'he = nodes[node].fn_in[hind]'
         }
 
-        r[bit][1] = rate_walksat(E[bit] + 1, nodes[node].nfacn - E[bit] - 1, K, q, Eav, cj[bit], binom_probs, 
+        r[bit][1] = rate_walksat(E[bit] + 1, nodes[node].nfacn - E[bit] - 1, K, q, e_av, cj[bit], binom_probs, 
                             binom_sums, pneigh, nch_fn);
         
         for (int ch_src = 0; ch_src < nch_fn; ch_src++){
@@ -526,7 +526,7 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
 // it computes all the derivatives of the joint probabilities
 void der_walksat(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***pu_cond, 
                  double **binom_probs, double **binom_sums, long M, int K, int nch_fn, 
-                 double q, double Eav, double **me_sum, int max_c){
+                 double q, double e_av, double **me_sum, int max_c){
     for (long he = 0; he < M; he++){
         for (int ch = 0; ch < nch_fn; ch++){
             me_sum[he][ch] = 0;
@@ -536,11 +536,10 @@ void der_walksat(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***pu
     // candidate to be a parallel for
     #pragma omp parallel for
     for (long he = 0; he < M; he++){
-        
         for (int w = 0; w < K; w++){
             sum_walksat(hedges[he].nodes_in[w], hedges[he].pos_n[w], nodes, hedges, 
                         prob_joint[he], pu_cond, binom_probs, binom_sums, K, nch_fn,
-                        q, Eav, me_sum[he], max_c);
+                        q, e_av, me_sum[he], max_c);
         }
     }
 }
@@ -555,15 +554,24 @@ double energy(double **prob_joint, Thedge *hedges, long M){
 }
 
 
+double norm(double *probs, int nelems){
+    double n = 0;
+    for (int i = 0; i < nelems; i++){
+        n += probs[i];
+    }
+    return n;
+}
+
+
 // peforms the integration of the differential equations with the 2nd order Runge-Kutta
 // the method is implemented with adaptive step size
-void RK2_walksat(Tnode *nodes, Thedge *hedges, long M, int K, int nch_fn, double q, int max_c, 
-                 double p0, char *fileener, double tl, double t0 = 0, double dt0 = 0.01, 
-                 double ef = 1e-6, double tol = 1e-2, double dt_min = 1e-7){
+void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, double q, int max_c, 
+                 double p0, char *fileener, double tl, double tol = 1e-2, double t0 = 0, double dt0 = 0.01, 
+                 double ef = 1e-6, double dt_min = 1e-7){
     double **binom_probs, **binom_sums;
     int ***cj;
     double **prob_joint, ***pu_cond, **me_sum, **pi;
-    double e, pu_av, error;                 
+    double e, pu_av, error, dif_norm;                 
                  
     // initalize all arrays that will be used inside the derivative
     init_aux_arr(binom_probs, binom_sums, max_c, K);
@@ -579,13 +587,15 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long M, int K, int nch_fn, double
     
     e = energy(prob_joint, hedges, M);
     pu_av = e / M;
-    fe << t0 << "\t" << e << endl;
+    fe << t0 << "\t" << e / N << endl;   // it prints the energy density
 
     double dt1 = dt0;
     double t = t0;
 
     bool valid;
 
+    // the time scale is already given in Monte Carlo steps. Inside the rates I am using 
+    // the energy density e_av
     while (t < tl){
         if (e < ef){
             cout << "Final energy reached" << endl;
@@ -598,7 +608,7 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long M, int K, int nch_fn, double
         get_all_binom_sums(max_c, pu_av, binom_probs, binom_sums);
 
         der_walksat(nodes, hedges, prob_joint, pu_cond, binom_probs, binom_sums, 
-                    M, K, nch_fn, q, e, me_sum, max_c);
+                    M, K, nch_fn, q, e / N, me_sum, max_c);   // in the rates, I use the energy density
 
         for (long he = 0; he < M; he++){
             for (int ch = 0; ch < nch_fn; ch++){
@@ -613,7 +623,7 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long M, int K, int nch_fn, double
         get_all_binom_sums(max_c, pu_av, binom_probs, binom_sums);
 
         der_walksat(nodes, hedges, prob_joint_1, pu_cond, binom_probs, binom_sums, 
-                    M, K, nch_fn, q, e, me_sum, max_c);
+                    M, K, nch_fn, q, e / N, me_sum, max_c);
         
         valid = true;
         for (long he = 0; he < M; he++){
@@ -637,15 +647,15 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long M, int K, int nch_fn, double
             error = 0;
             for (long he = 0; he < M; he++){
                 for (int ch = 0; ch < nch_fn; ch++){
-                    if (fabs(k1[he][ch] - k2[he][ch]) > error){
-                        error = fabs(k1[he][ch] - k2[he][ch]) / 
-                                max(fabs(k1[he][ch]), fabs(k2[he][ch]));
-                    }
+                    error += fabs(k1[he][ch] - k2[he][ch]);
                 }
             }
 
+            error /= nch_fn * M;
+
             if (error < 2 * tol){
                 cout << "step dt=" << dt1 << "  accepted" << endl;
+                cout << "error=" << error << endl;
                 t += dt1;
                 for (long he = 0; he < M; he++){
                     for (int ch = 0; ch < nch_fn; ch++){
@@ -654,9 +664,11 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long M, int K, int nch_fn, double
                 }
                 e = energy(prob_joint, hedges, M);
                 pu_av = e / M;
-                fe << t << "\t" << e << endl;
+                fe << t << "\t" << e / N << endl;
 
             }else{
+                e = energy(prob_joint, hedges, M);
+                pu_av = e / M;
                 cout << "step dt=" << dt1 << "  rejected  new step will be attempted" << endl;
                 cout << "error=" <<  error << endl;
             }
@@ -696,7 +708,6 @@ int main(int argc, char *argv[]) {
 
     int nch_fn = (1 << K);
     double p0 = 0.5;
-    double t0 = 0;
 
     omp_set_num_threads(nthr);
 
@@ -720,7 +731,7 @@ int main(int argc, char *argv[]) {
     get_info_exc(nodes, hedges, N, M, K);
 
     
-    RK2_walksat(nodes, hedges, M, K, nch_fn, q, max_c, p0, fileener, tl, tol=tol);
+    RK2_walksat(nodes, hedges, N, M, K, nch_fn, q, max_c, p0, fileener, tl, tol);
 
     return 0;
 }
