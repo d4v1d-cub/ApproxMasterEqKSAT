@@ -5,7 +5,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${fileDirname}/Debug/CDA_WalkSAT.out",
-            "args": ["100", "220", "3", "1", "1.0", "20.0", "1e-3", "6"],
+            "args": ["100", "180", "3", "1", "0.01", "20.0", "1e-3", "6"],
             "stopAtEntry": false,
             "cwd": "${fileDirname}/Debug",
             "environment": [],
