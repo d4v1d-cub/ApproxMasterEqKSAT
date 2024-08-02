@@ -750,7 +750,7 @@ int main(int argc, char *argv[]) {
     // sprintf(filelinks, "KSAT_K_%d_enlaces_N_%li_M_%li_idumenlaces_%li_idumgraph_%li_ordered.txt", K, N, M, seed_g, seed_g);
 
     char fileener[300]; 
-    sprintf(fileener, "CDA_WalkSAT_ener_K_%d_N_%li_M_%li_q_%.3lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
+    sprintf(fileener, "CDA_WalkSAT_ener_K_%d_N_%li_M_%li_q_%.4lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
             K, N, M, q, tl, seed_r, tol);
 
     create_graph(N, M, K, nodes, hedges, r);

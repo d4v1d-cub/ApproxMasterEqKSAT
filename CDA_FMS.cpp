@@ -338,8 +338,9 @@ void get_all_binom_sums(int max_c, double pu_av, double **binom_probs,
 }
 
 
+
 // it fills the array of the probabilities to be used when computing the walksat rate
-void fill_pneigh(int E0, int S, int *cj, double **binom_probs, double **binom_sums, 
+void fill_pneigh(int S, int *cj, double **binom_probs, double **binom_sums, 
                  double **pneigh, int K){
     for (int j = 0; j < K - 1; j++){
         pneigh[j][0] = binom_probs[cj[j] - 1][S];
@@ -353,9 +354,9 @@ void fill_pneigh(int E0, int S, int *cj, double **binom_probs, double **binom_su
 // in unsatisfied clauses
 // nch_exc is the number of possible combinations of the K-1 other variables in the clause
 // therefore, nch_exc = 2^(K-1)
-double rate_walksat(int E0, int S, int K, double q, double e_av, int **cj, 
-                    double **binom_probs, double **binom_sums, double **pneigh, 
-                    int nch_exc){
+double rate_walksat(int E0, int S, int K, double q, double e_av, 
+                    int **cj, double **binom_probs, double **binom_sums, 
+                    double **pneigh, int nch_exc){
     bool cond;
     double cumul, prod;
     int cumul_bits, bit, k;
@@ -373,7 +374,7 @@ double rate_walksat(int E0, int S, int K, double q, double e_av, int **cj,
             k++;
         }
         if (cond){   
-            fill_pneigh(E0, S, cj[fn], binom_probs, binom_sums, pneigh, K);
+            fill_pneigh(S, cj[fn], binom_probs, binom_sums, pneigh, K);
             for (int ch = 0; ch < nch_exc; ch++){
                 prod = 1;
                 cumul_bits = 0;
@@ -393,6 +394,7 @@ double rate_walksat(int E0, int S, int K, double q, double e_av, int **cj,
     }
     return q * E0 / e_av / K + (1 - q) * cumul / e_av; 
 }
+
 
 
 // it computes the conditional probabilities of having a partially unsatisfied clause, given the 
@@ -450,21 +452,21 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
     int he, plc_he;
     bool bit, uns, uns_flip;
     int ch_flip;
+    
     double prod[2], r[2][2];
     int E[2];
-    double **pneigh = (double **) malloc((K - 1) * sizeof(double *));
+    double **pneigh = new double *[K - 1];
     for (int j = 0; j < K - 1; j++){
-        pneigh[j] = (double*) malloc(2 * sizeof(double));
+        pneigh[j] = new double [2];
     }
 
-    int ***cj = (int ***) malloc (2 * sizeof(int **));
+    int ***cj = new int **[2];
     for (int s = 0; s < 2; s++){
-        cj[s] = (int **) malloc (max_c * sizeof(int *));
-        for (int h = 0; h < max_c; h++){
-            cj[s][h] = (int *) malloc ((K - 1) * sizeof(int));
+        cj[s] = new int *[nodes[node].nfacn];
+        for (int h = 0; h < nodes[node].nfacn; h++){
+            cj[s][h] = new int [K - 1];
         }
     }
-
     
 
     for (long ch = 0; ch < nodes[node].nch / 2; ch++){
@@ -516,10 +518,22 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
         }
     }
 
-    // delete []pneigh;
-    // delete []cj;
-    free(pneigh);
-    free(cj);
+    for (int j = 0; j < K - 1; j++){
+        delete []pneigh[j];
+    }
+    delete [] pneigh;
+    pneigh = NULL;
+    
+
+    for (int s = 0; s < 2; s++){
+        for (int h = 0; h < nodes[node].nfacn; h++){
+            delete [] cj[s][h];
+        }
+        delete [] cj[s];
+    }
+    delete []cj;
+    cj = NULL;
+
 }
 
 
@@ -736,7 +750,7 @@ int main(int argc, char *argv[]) {
     // sprintf(filelinks, "KSAT_K_%d_enlaces_N_%li_M_%li_idumenlaces_%li_idumgraph_%li_ordered.txt", K, N, M, seed_g, seed_g);
 
     char fileener[300]; 
-    sprintf(fileener, "CDA_FMS_ener_K_%d_N_%li_M_%li_q_%.3lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
+    sprintf(fileener, "CDA_FMS_ener_K_%d_N_%li_M_%li_q_%.4lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
             K, N, M, q, tl, seed_r, tol);
 
     create_graph(N, M, K, nodes, hedges, r);
