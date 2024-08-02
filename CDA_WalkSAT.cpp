@@ -340,7 +340,7 @@ void get_all_binom_sums(int max_c, double pu_av, double **binom_probs,
 
 
 // it fills the array of the probabilities to be used when computing the walksat rate
-void fill_pneigh(int E0, int S, int *cj, double **binom_probs, double **binom_sums, 
+void fill_pneigh(int S, int *cj, double **binom_probs, double **binom_sums, 
                  double **pneigh, int K){
     for (int j = 0; j < K - 1; j++){
         pneigh[j][0] = binom_probs[cj[j] - 1][S];
@@ -374,7 +374,7 @@ double rate_walksat(int E0, int S, int K, double q, double e_av,
             k++;
         }
         if (cond){   
-            fill_pneigh(E0, S, cj[fn], binom_probs, binom_sums, pneigh, K);
+            fill_pneigh(S, cj[fn], binom_probs, binom_sums, pneigh, K);
             for (int ch = 0; ch < nch_exc; ch++){
                 prod = 1;
                 cumul_bits = 0;
