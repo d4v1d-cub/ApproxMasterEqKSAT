@@ -338,6 +338,7 @@ void get_all_binom_sums(int max_c, double pu_av, double **binom_probs,
 }
 
 
+
 // it fills the array of the probabilities to be used when computing the walksat rate
 void fill_pneigh(int E0, int S, int *cj, double **binom_probs, double **binom_sums, 
                  double **pneigh, int K){
@@ -353,9 +354,9 @@ void fill_pneigh(int E0, int S, int *cj, double **binom_probs, double **binom_su
 // in unsatisfied clauses
 // nch_exc is the number of possible combinations of the K-1 other variables in the clause
 // therefore, nch_exc = 2^(K-1)
-double rate_walksat(int E0, int S, int K, double q, double e_av, int **cj, 
-                    double **binom_probs, double **binom_sums, double **pneigh, 
-                    int nch_exc){
+double rate_walksat(int E0, int S, int K, double q, double e_av, 
+                    int **cj, double **binom_probs, double **binom_sums, 
+                    double **pneigh, int nch_exc){
     bool cond;
     double cumul, prod;
     int cumul_bits, bit, k;
@@ -391,8 +392,9 @@ double rate_walksat(int E0, int S, int K, double q, double e_av, int **cj,
             }
         }
     }
-    return q * E0 / e_av / K + (1 - q) * cumul / e_av / K; 
+    return q * E0 / e_av / K + (1 - q) * cumul / e_av; 
 }
+
 
 
 // it computes the conditional probabilities of having a partially unsatisfied clause, given the 
@@ -450,21 +452,21 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
     int he, plc_he;
     bool bit, uns, uns_flip;
     int ch_flip;
+    
     double prod[2], r[2][2];
     int E[2];
-    double **pneigh = (double **) malloc((K - 1) * sizeof(double *));
+    double **pneigh = new double *[K - 1];
     for (int j = 0; j < K - 1; j++){
-        pneigh[j] = (double*) malloc(2 * sizeof(double));
+        pneigh[j] = new double [2];
     }
 
-    int ***cj = (int ***) malloc (2 * sizeof(int **));
+    int ***cj = new int **[2];
     for (int s = 0; s < 2; s++){
-        cj[s] = (int **) malloc (max_c * sizeof(int *));
-        for (int h = 0; h < max_c; h++){
-            cj[s][h] = (int *) malloc ((K - 1) * sizeof(int));
+        cj[s] = new int *[nodes[node].nfacn];
+        for (int h = 0; h < nodes[node].nfacn; h++){
+            cj[s][h] = new int [K - 1];
         }
     }
-
     
 
     for (long ch = 0; ch < nodes[node].nch / 2; ch++){
@@ -516,10 +518,22 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
         }
     }
 
-    // delete []pneigh;
-    // delete []cj;
-    free(pneigh);
-    free(cj);
+    for (int j = 0; j < K - 1; j++){
+        delete []pneigh[j];
+    }
+    delete [] pneigh;
+    pneigh = NULL;
+    
+
+    for (int s = 0; s < 2; s++){
+        for (int h = 0; h < nodes[node].nfacn; h++){
+            delete [] cj[s][h];
+        }
+        delete [] cj[s];
+    }
+    delete []cj;
+    cj = NULL;
+
 }
 
 
