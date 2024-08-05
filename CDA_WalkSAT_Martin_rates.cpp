@@ -335,7 +335,7 @@ void get_all_p_greater(int max_c, double pu_av, double **p_equal,
     for (int si = 0; si < max_c; si++){
         for (int gj = si; gj < max_c; gj++){
             p_greater[si][gj - si] = 0;
-            for (int sj = si + 1; sj < gj + 1; sj++){
+            for (int sj = si; sj < gj + 1; sj++){
                 p_greater[si][gj - si] += p_equal[gj][sj];   
             }
         }
