@@ -308,31 +308,36 @@ double rate_fms(int E0, int E1, int K, double eta, double e_av){
 // initializes the arrays where the binomial weights will be stored. Those arrays are used 
 // to compute the probability of selecting the variable belonging to the smallest number 
 // of satisfied clauses
-void init_aux_arr(double **&binom_probs, double **&binom_sums, int max_c, int K){
-    binom_probs = new double *[max_c];
+void init_aux_arr(double **&p_equal, double **&p_greater, int max_c, int K){
+    p_equal = new double *[max_c];
     for (int gj = 0; gj < max_c; gj++){
-        binom_probs[gj] = new double[gj + 1];
+        p_equal[gj] = new double[gj + 1];
     }
 
-    binom_sums = new double *[max_c];
+    p_greater = new double *[max_c];
     for (int s = 0; s < max_c; s++){
-        binom_sums[s] = new double[max_c - s];
+        p_greater[s] = new double[max_c - s];
     }
 }
 
 
 // it computes the binomial weights
-void get_all_binom_sums(int max_c, double pu_av, double **binom_probs, 
-                        double **binom_sums){
-    for (int gj = 0; gj < max_c; gj++){
+void get_all_p_greater(int max_c, double pu_av, double **p_equal, 
+                        double **p_greater){
+    p_equal[0][0] = 1;                       
+    for (int gj = 1; gj < max_c; gj++){
         for (int sj = 0; sj < gj + 1; sj++){
-            binom_probs[gj][sj] = gsl_ran_binomial_pdf(sj, 1 - pu_av, gj);
+            p_equal[gj][sj] = gsl_ran_binomial_pdf(sj, 1 - pu_av, gj) * 
+                              (gj - sj) / (sj + 1) / gj;
         }
     }
     
     for (int si = 0; si < max_c; si++){
         for (int gj = si; gj < max_c; gj++){
-            binom_sums[si][gj - si] = gsl_cdf_binomial_Q(si, 1 - pu_av, gj);
+            p_greater[si][gj - si] = 0;
+            for (int sj = si + 1; sj < gj + 1; sj++){
+                p_greater[si][gj - si] += p_equal[gj][sj];   
+            }
         }
     }
 }
@@ -340,11 +345,11 @@ void get_all_binom_sums(int max_c, double pu_av, double **binom_probs,
 
 
 // it fills the array of the probabilities to be used when computing the walksat rate
-void fill_pneigh(int S, int *cj, double **binom_probs, double **binom_sums, 
+void fill_pneigh(int S, int *cj, double **p_equal, double **p_greater, 
                  double **pneigh, int K){
     for (int j = 0; j < K - 1; j++){
-        pneigh[j][0] = binom_probs[cj[j] - 1][S];
-        pneigh[j][1] = binom_sums[S][cj[j] - 1 - S];
+        pneigh[j][0] = p_equal[cj[j] - 1][S];
+        pneigh[j][1] = p_greater[S][cj[j] - 1 - S];
     }
 }
 
@@ -355,7 +360,7 @@ void fill_pneigh(int S, int *cj, double **binom_probs, double **binom_sums,
 // nch_exc is the number of possible combinations of the K-1 other variables in the clause
 // therefore, nch_exc = 2^(K-1)
 double rate_walksat(int E0, int S, int K, double q, double e_av, 
-                    int **cj, double **binom_probs, double **binom_sums, 
+                    int **cj, double **p_equal, double **p_greater, 
                     double **pneigh, int nch_exc){
     bool cond;
     double cumul, prod;
@@ -374,7 +379,7 @@ double rate_walksat(int E0, int S, int K, double q, double e_av,
             k++;
         }
         if (cond){   
-            fill_pneigh(S, cj[fn], binom_probs, binom_sums, pneigh, K);
+            fill_pneigh(S, cj[fn], p_equal, p_greater, pneigh, K);
             for (int ch = 0; ch < nch_exc; ch++){
                 prod = 1;
                 cumul_bits = 0;
@@ -446,8 +451,8 @@ double prodcond(double ***pu_cond, int fn_src, Tnode node, int s, long ch){
 // part_uns is 1 if the other variables in fn_src are partially
 // unsatisfying their links, and is 0 otherwise. 
 void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges, 
-                 double *prob_joint, double ***pu_cond, double **binom_probs, 
-                 double **binom_sums, int K, int nch_fn, double q, 
+                 double *prob_joint, double ***pu_cond, double **p_equal, 
+                 double **p_greater, int K, int nch_fn, double q, 
                  double e_av, double *me_sum_src, int max_c){
     int he, plc_he;
     bool bit, uns, uns_flip;
@@ -490,10 +495,10 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
             }
         }
 
-        r[0][0] = rate_walksat(E[0], nodes[node].nfacn - E[0], K, q, e_av, cj[0], binom_probs, 
-                            binom_sums, pneigh, nch_fn / 2);
-        r[1][0] = rate_walksat(E[1], nodes[node].nfacn - E[1], K, q, e_av, cj[1], binom_probs, 
-                            binom_sums, pneigh, nch_fn / 2);
+        r[0][0] = rate_walksat(E[0], nodes[node].nfacn - E[0], K, q, e_av, cj[0], p_equal, 
+                            p_greater, pneigh, nch_fn / 2);
+        r[1][0] = rate_walksat(E[1], nodes[node].nfacn - E[1], K, q, e_av, cj[1], p_equal, 
+                            p_greater, pneigh, nch_fn / 2);
 
         he = nodes[node].fn_in[fn_src];
         plc_he = nodes[node].pos_fn[fn_src];
@@ -505,8 +510,8 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
                     // 'he = nodes[node].fn_in[hind]'
         }
 
-        r[bit][1] = rate_walksat(E[bit] + 1, nodes[node].nfacn - E[bit] - 1, K, q, e_av, cj[bit], binom_probs, 
-                            binom_sums, pneigh, nch_fn);
+        r[bit][1] = rate_walksat(E[bit] + 1, nodes[node].nfacn - E[bit] - 1, K, q, e_av, cj[bit], p_equal, 
+                            p_greater, pneigh, nch_fn);
         
         for (int ch_src = 0; ch_src < nch_fn; ch_src++){
             bit = ((ch_src >> plc_he) & 1);
@@ -539,7 +544,7 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
 
 // it computes all the derivatives of the joint probabilities
 void der_walksat(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***pu_cond, 
-                 double **binom_probs, double **binom_sums, long M, int K, int nch_fn, 
+                 double **p_equal, double **p_greater, long M, int K, int nch_fn, 
                  double q, double e_av, double **me_sum, int max_c){
     for (long he = 0; he < M; he++){
         for (int ch = 0; ch < nch_fn; ch++){
@@ -552,7 +557,7 @@ void der_walksat(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***pu
     for (long he = 0; he < M; he++){
         for (int w = 0; w < K; w++){
             sum_walksat(hedges[he].nodes_in[w], hedges[he].pos_n[w], nodes, hedges, 
-                        prob_joint[he], pu_cond, binom_probs, binom_sums, K, nch_fn,
+                        prob_joint[he], pu_cond, p_equal, p_greater, K, nch_fn,
                         q, e_av, me_sum[he], max_c);
         }
     }
@@ -582,13 +587,13 @@ double norm(double *probs, int nelems){
 void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, double q, int max_c, 
                  double p0, char *fileener, double tl, double tol = 1e-2, double t0 = 0, double dt0 = 0.01, 
                  double ef = 1e-6, double dt_min = 1e-7){
-    double **binom_probs, **binom_sums;
+    double **p_equal, **p_greater;
     int ***cj;
     double **prob_joint, ***pu_cond, **me_sum, **pi;
     double e, pu_av, error, dif_norm;                 
                  
     // initalize all arrays that will be used inside the derivative
-    init_aux_arr(binom_probs, binom_sums, max_c, K);
+    init_aux_arr(p_equal, p_greater, max_c, K);
     init_probs(prob_joint, pu_cond, pi, me_sum, M, K, nch_fn, p0);
 
 
@@ -619,9 +624,9 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
         auto t1 = std::chrono::high_resolution_clock::now();
 
         comp_pcond(prob_joint, pu_cond, pi, hedges, M, K, nch_fn);
-        get_all_binom_sums(max_c, pu_av, binom_probs, binom_sums);
+        get_all_p_greater(max_c, pu_av, p_equal, p_greater);
 
-        der_walksat(nodes, hedges, prob_joint, pu_cond, binom_probs, binom_sums, 
+        der_walksat(nodes, hedges, prob_joint, pu_cond, p_equal, p_greater, 
                     M, K, nch_fn, q, e / N, me_sum, max_c);   // in the rates, I use the energy density
 
         valid = true;
@@ -659,9 +664,9 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
         e = energy(prob_joint_1, hedges, M);
         pu_av = e / M;
         comp_pcond(prob_joint_1, pu_cond, pi, hedges, M, K, nch_fn);
-        get_all_binom_sums(max_c, pu_av, binom_probs, binom_sums);
+        get_all_p_greater(max_c, pu_av, p_equal, p_greater);
 
-        der_walksat(nodes, hedges, prob_joint_1, pu_cond, binom_probs, binom_sums, 
+        der_walksat(nodes, hedges, prob_joint_1, pu_cond, p_equal, p_greater, 
                     M, K, nch_fn, q, e / N, me_sum, max_c);
             
         valid = true;
@@ -763,7 +768,7 @@ int main(int argc, char *argv[]) {
     // sprintf(filelinks, "KSAT_K_%d_enlaces_N_%li_M_%li_idumenlaces_%li_idumgraph_%li_ordered.txt", K, N, M, seed_g, seed_g);
 
     char fileener[300]; 
-    sprintf(fileener, "CDA_WalkSAT_ener_K_%d_N_%li_M_%li_q_%.4lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
+    sprintf(fileener, "CDA_WalkSAT_Martin_rates_ener_K_%d_N_%li_M_%li_q_%.4lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
             K, N, M, q, tl, seed_r, tol);
 
     create_graph(N, M, K, nodes, hedges, r);

@@ -635,7 +635,7 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
             }
         }
 
-        if (!valid){
+        while (!valid){
             cout << "joint probabilities became negative in the auxiliary step of RK2" << endl;
             dt1 /= 2;
             cout << "step divided by half    dt=" << dt1 << endl;
@@ -643,72 +643,85 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
                 dt_min /= 2;
                 cout << "dt_min also halfed" << endl;
             }
-        }else{
-            e = energy(prob_joint_1, hedges, M);
-            pu_av = e / M;
-            comp_pcond(prob_joint_1, pu_cond, pi, hedges, M, K, nch_fn);
-            get_all_binom_sums(max_c, pu_av, binom_probs, binom_sums);
 
-            der_walksat(nodes, hedges, prob_joint_1, pu_cond, binom_probs, binom_sums, 
-                        M, K, nch_fn, q, e / N, me_sum, max_c);
-            
             valid = true;
             for (long he = 0; he < M; he++){
                 for (int ch = 0; ch < nch_fn; ch++){
-                    k2[he][ch] = dt1 * me_sum[he][ch];
-                    if (prob_joint[he][ch] + (k1[he][ch] + k2[he][ch]) / 2 < 0){
+                    k1[he][ch] = dt1 * me_sum[he][ch];
+                    prob_joint_1[he][ch] = prob_joint[he][ch] + k1[he][ch];
+                    if (prob_joint_1[he][ch] < 0){
                         valid = false;
                     }
                 }
             }
+        }
+        
+        e = energy(prob_joint_1, hedges, M);
+        pu_av = e / M;
+        comp_pcond(prob_joint_1, pu_cond, pi, hedges, M, K, nch_fn);
+        get_all_binom_sums(max_c, pu_av, binom_probs, binom_sums);
 
-            if (!valid){
-                cout << "Some probabilities would be negative if dt=" << dt1 << " is taken" << endl;
-                dt1 /= 2;
-                cout << "step divided by half    dt=" << dt1  << endl;
-                if (dt1 < dt_min){
-                    dt_min /= 2;
-                    cout << "dt_min also halfed" << endl;
+        der_walksat(nodes, hedges, prob_joint_1, pu_cond, binom_probs, binom_sums, 
+                    M, K, nch_fn, q, e / N, me_sum, max_c);
+            
+        valid = true;
+        for (long he = 0; he < M; he++){
+            for (int ch = 0; ch < nch_fn; ch++){
+                k2[he][ch] = dt1 * me_sum[he][ch];
+                if (prob_joint[he][ch] + (k1[he][ch] + k2[he][ch]) / 2 < 0){
+                    valid = false;
                 }
-            }else{
-                error = 0;
+            }
+        }
+
+        if (!valid){
+            cout << "Some probabilities would be negative if dt=" << dt1 << " is taken" << endl;
+            dt1 /= 2;
+            cout << "step divided by half    dt=" << dt1  << endl;
+            if (dt1 < dt_min){
+                dt_min /= 2;
+                cout << "dt_min also halfed" << endl;
+            }
+            e = energy(prob_joint, hedges, M);
+            pu_av = e / M;
+        }else{
+            error = 0;
+            for (long he = 0; he < M; he++){
+                for (int ch = 0; ch < nch_fn; ch++){
+                    error += fabs(k1[he][ch] - k2[he][ch]);
+                }
+            }
+
+            error /= nch_fn * M;
+
+            if (error < 2 * tol){
+                cout << "step dt=" << dt1 << "  accepted" << endl;
+                cout << "error=" << error << endl;
+                t += dt1;
                 for (long he = 0; he < M; he++){
                     for (int ch = 0; ch < nch_fn; ch++){
-                        error += fabs(k1[he][ch] - k2[he][ch]);
+                        prob_joint[he][ch] += (k1[he][ch] + k2[he][ch]) / 2;
                     }
                 }
+                e = energy(prob_joint, hedges, M);
+                pu_av = e / M;
+                fe << t << "\t" << e / N << endl;
 
-                error /= nch_fn * M;
-
-                if (error < 2 * tol){
-                    cout << "step dt=" << dt1 << "  accepted" << endl;
-                    cout << "error=" << error << endl;
-                    t += dt1;
-                    for (long he = 0; he < M; he++){
-                        for (int ch = 0; ch < nch_fn; ch++){
-                            prob_joint[he][ch] += (k1[he][ch] + k2[he][ch]) / 2;
-                        }
-                    }
-                    e = energy(prob_joint, hedges, M);
-                    pu_av = e / M;
-                    fe << t << "\t" << e / N << endl;
-
-                }else{
-                    e = energy(prob_joint, hedges, M);
-                    pu_av = e / M;
-                    cout << "step dt=" << dt1 << "  rejected  new step will be attempted" << endl;
-                    cout << "error=" <<  error << endl;
-                }
-
-                dt1 = 4 * dt1 * sqrt(2 * tol / error) / 5;
-                if (dt1 > M){
-                    dt1 = M;
-                }else if(dt1 < dt_min){
-                    dt1 = dt_min;
-                }
-
-                cout << "Recommended step is dt=" << dt1 << endl;
+            }else{
+                e = energy(prob_joint, hedges, M);
+                pu_av = e / M;
+                cout << "step dt=" << dt1 << "  rejected  new step will be attempted" << endl;
+                cout << "error=" <<  error << endl;
             }
+
+            dt1 = 4 * dt1 * sqrt(2 * tol / error) / 5;
+            if (dt1 > M){
+                    dt1 = M;
+            }else if(dt1 < dt_min){
+                    dt1 = dt_min;
+            }
+
+            cout << "Recommended step is dt=" << dt1 << endl;
         }
 
         auto t2 = std::chrono::high_resolution_clock::now();
