@@ -61,7 +61,8 @@ void init_graph(Tnode *&nodes, Thedge *&hedges, long N, long M){
 
 
 // This function reads all the information about the graph from a file.
-void read_graph(char *filegraph, long N, long M, int K, Tnode *&nodes, Thedge *&hedges){
+void read_graph(char *filegraph, long N, long M, int K, 
+                Tnode *&nodes, Thedge *&hedges){
     
     init_graph(nodes, hedges, N, M);
     string trash_str;
@@ -75,7 +76,6 @@ void read_graph(char *filegraph, long N, long M, int K, Tnode *&nodes, Thedge *&
     ifstream fg(filegraph);
 
     long fn_count = 0;
-    int he;
     bool new_fn;
 
     for (long i = 0; i < N; i++){
@@ -119,6 +119,110 @@ void read_graph(char *filegraph, long N, long M, int K, Tnode *&nodes, Thedge *&
 
     fg.close();
 }
+
+
+long find_fn(vector <long> nodes_in, Thedge *hedges, vector <long> fn_list){
+    bool cond = true;
+    int w;
+    int i = 0;
+    while (i < fn_list.size() && cond){
+        w = 0;
+        while (cond && w < nodes_in.size()){
+            if (nodes_in[w] != hedges[fn_list[i]].nodes_in[w]){
+                cond = false;
+            }
+            w++;
+        }
+        i++;
+        cond = !cond;
+    }
+    return fn_list[i - 1];
+}
+
+
+int find_node(vector <long> nodes_in, long node){
+    bool cond = true;
+    int i = 0;
+    while (i < nodes_in.size() && cond){
+        if (nodes_in[i] == node){
+            cond = false;
+        }
+        i++;
+    }
+    return i - 1;
+}
+
+
+void read_graph_old_order(char *filegraph, long N, long M, int K, 
+                          Tnode *&nodes, Thedge *&hedges){
+    
+    init_graph(nodes, hedges, N, M);
+    string trash_str;
+    double trash_double;
+
+    vector <long> nodes_in;
+    for (int j = 0; j < K; j++){
+        nodes_in.push_back(0);
+    }
+
+    ifstream fg(filegraph);
+
+    long fn_count = 0;
+    long he;
+    bool new_fn;
+    long neigh;
+
+    for (long i = 0; i < N; i++){
+        fg >> trash_double;
+        fg >> nodes[i].nfacn;
+        nodes[i].nch = (1 >> nodes[i].nfacn); 
+        getline(fg, trash_str);
+        getline(fg, trash_str);
+
+        for (int k = 0; k < nodes[i].nfacn; k++){
+            nodes_in[0] = i;
+            new_fn = true;
+            for (int j = 0; j < K - 1; j++){
+                fg >> trash_double;
+                fg >> trash_double;
+                fg >> nodes_in[j + 1];
+                if (nodes_in[j + 1] < nodes_in[0]){
+                    new_fn = false;
+                    neigh = nodes_in[j + 1];
+                }
+                fg >> trash_double;
+                fg >> trash_double;
+            }
+            sort(nodes_in.begin(), nodes_in.end());
+            if (new_fn){
+                nodes[i].fn_in.push_back(fn_count);
+                hedges[fn_count].pos_n.push_back(nodes[i].fn_in.size() - 1);
+                nodes[i].pos_fn.push_back(find_node(nodes_in, i));    
+                for (int w = 0; w < K; w++){
+                    
+                    hedges[fn_count].nodes_in.push_back(nodes_in[w]);
+                }
+                fn_count++;
+            }else{
+                he = find_fn(nodes_in, hedges, nodes[neigh].fn_in);
+                nodes[i].fn_in.push_back(he);
+                nodes[i].pos_fn.push_back(find_node(nodes_in, i));
+                hedges[he].pos_n.push_back(nodes[i].fn_in.size() - 1);
+            }
+
+        }
+    }
+
+    for (long i = 0; i < N; i++){
+        if (nodes[i].nfacn != nodes[i].fn_in.size()){
+            cout << "Problem with node " << i << endl;
+        }
+    }
+
+    fg.close();
+}
+
+
 
 // This function read the links from a file
 void read_links(char *filelinks, long N, long M, int K, Tnode *nodes, Thedge *hedges){
@@ -757,16 +861,20 @@ int main(int argc, char *argv[]) {
     gsl_rng * r;
     init_ran(r, seed_r);
 
-    // char filegraph[300];
-    // char filelinks[300];
-    // sprintf(filegraph, "KSATgraph_K_%d_N_%li_M_%li_simetric_1_model_1_idum1_%li_J_1_ordered.txt", K, N, M, seed_g);
-    // sprintf(filelinks, "KSAT_K_%d_enlaces_N_%li_M_%li_idumenlaces_%li_idumgraph_%li_ordered.txt", K, N, M, seed_g, seed_g);
+    char filegraph[300];
+    char filelinks[300];
+    sprintf(filegraph, "KSATgraph_K_%d_N_%li_M_%li_simetric_1_model_1_idum1_-2_J_1_ordered.txt", 
+                       K, N, M);
+    sprintf(filelinks, "KSAT_K_%d_enlaces_N_%li_M_%li_idumenlaces_-2_idumgraph_-2_ordered.txt", 
+                       K, N, M);
 
     char fileener[300]; 
     sprintf(fileener, "CDA_WalkSAT_ener_K_%d_N_%li_M_%li_q_%.4lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
             K, N, M, q, tl, seed_r, tol);
 
-    create_graph(N, M, K, nodes, hedges, r);
+    // create_graph(N, M, K, nodes, hedges, r);
+    read_graph_old_order(filegraph, N, M, K, nodes, hedges);
+    read_links(filelinks, N, M, K, nodes, hedges);
     int max_c = get_max_c(nodes, N);
     get_info_exc(nodes, hedges, N, M, K);
 
