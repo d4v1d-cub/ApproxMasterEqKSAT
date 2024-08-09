@@ -523,7 +523,8 @@ void condinicrandom(double *** probcond, double ** probjoint, Tnode * red, int N
     prob = new double [N];
     for (int j = 0; j < N; j++)
     {
-        prob[j] = ran3(&idum);
+        // prob[j] = ran3(&idum);
+        prob[j] = 0.5;
     }
 
     double prod;

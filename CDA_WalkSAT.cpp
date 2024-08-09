@@ -81,7 +81,7 @@ void read_graph(char *filegraph, long N, long M, int K,
     for (long i = 0; i < N; i++){
         fg >> trash_double;
         fg >> nodes[i].nfacn;
-        nodes[i].nch = (1 >> nodes[i].nfacn); 
+        nodes[i].nch = (long) pow(2, nodes[i].nfacn);
         getline(fg, trash_str);
         getline(fg, trash_str);
         nodes_in[0] = i;
@@ -175,7 +175,7 @@ void read_graph_old_order(char *filegraph, long N, long M, int K,
     for (long i = 0; i < N; i++){
         fg >> trash_double;
         fg >> nodes[i].nfacn;
-        nodes[i].nch = (1 >> nodes[i].nfacn); 
+        nodes[i].nch = (long) pow(2, nodes[i].nfacn);
         getline(fg, trash_str);
         getline(fg, trash_str);
 
@@ -610,7 +610,7 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
         }
 
         r[bit][1] = rate_walksat(E[bit] + 1, nodes[node].nfacn - E[bit] - 1, K, q, e_av, cj[bit], binom_probs, 
-                            binom_sums, pneigh, nch_fn);
+                            binom_sums, pneigh, nch_fn / 2);
         
         for (int ch_src = 0; ch_src < nch_fn; ch_src++){
             bit = ((ch_src >> plc_he) & 1);

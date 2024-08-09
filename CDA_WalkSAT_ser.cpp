@@ -183,7 +183,7 @@ void UpdateCDAarrays(Tnode * red, double *** probcond, double ** probjoint,
                 lugar = places[q][w][e]; //Se va entonces por todos los lugares de la clase
 
                 cad = (h + red[lugar].unsatisfied[k]) % numcadenasxfactornode; //se calcula la cadena
-                E0 = Elugar0 - Efacnode0 * red[lugar].elemcad[k][cad];
+                E0 = Elugar0 + Efacnode0 * red[lugar].elemcad[k][cad];
                 E1 = Elugar1 + Efacnode1 * red[lugar].elemcad[k][cad];
 
                 rate0 = total_rate_walksat_greedy(red, 1 - E / M, E / M, red[lugar].numfactornodes - E0, lugar,
