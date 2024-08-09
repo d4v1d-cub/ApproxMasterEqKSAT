@@ -61,7 +61,8 @@ void init_graph(Tnode *&nodes, Thedge *&hedges, long N, long M){
 
 
 // This function reads all the information about the graph from a file.
-void read_graph(char *filegraph, long N, long M, int K, Tnode *&nodes, Thedge *&hedges){
+void read_graph(char *filegraph, long N, long M, int K, 
+                Tnode *&nodes, Thedge *&hedges){
     
     init_graph(nodes, hedges, N, M);
     string trash_str;
@@ -75,13 +76,12 @@ void read_graph(char *filegraph, long N, long M, int K, Tnode *&nodes, Thedge *&
     ifstream fg(filegraph);
 
     long fn_count = 0;
-    int he;
     bool new_fn;
 
     for (long i = 0; i < N; i++){
         fg >> trash_double;
         fg >> nodes[i].nfacn;
-        nodes[i].nch = (1 >> nodes[i].nfacn); 
+        nodes[i].nch = (long) pow(2, nodes[i].nfacn);
         getline(fg, trash_str);
         getline(fg, trash_str);
         nodes_in[0] = i;
@@ -119,6 +119,110 @@ void read_graph(char *filegraph, long N, long M, int K, Tnode *&nodes, Thedge *&
 
     fg.close();
 }
+
+
+long find_fn(vector <long> nodes_in, Thedge *hedges, vector <long> fn_list){
+    bool cond = true;
+    int w;
+    int i = 0;
+    while (i < fn_list.size() && cond){
+        w = 0;
+        while (cond && w < nodes_in.size()){
+            if (nodes_in[w] != hedges[fn_list[i]].nodes_in[w]){
+                cond = false;
+            }
+            w++;
+        }
+        i++;
+        cond = !cond;
+    }
+    return fn_list[i - 1];
+}
+
+
+int find_node(vector <long> nodes_in, long node){
+    bool cond = true;
+    int i = 0;
+    while (i < nodes_in.size() && cond){
+        if (nodes_in[i] == node){
+            cond = false;
+        }
+        i++;
+    }
+    return i - 1;
+}
+
+
+void read_graph_old_order(char *filegraph, long N, long M, int K, 
+                          Tnode *&nodes, Thedge *&hedges){
+    
+    init_graph(nodes, hedges, N, M);
+    string trash_str;
+    double trash_double;
+
+    vector <long> nodes_in;
+    for (int j = 0; j < K; j++){
+        nodes_in.push_back(0);
+    }
+
+    ifstream fg(filegraph);
+
+    long fn_count = 0;
+    long he;
+    bool new_fn;
+    long neigh;
+
+    for (long i = 0; i < N; i++){
+        fg >> trash_double;
+        fg >> nodes[i].nfacn;
+        nodes[i].nch = (long) pow(2, nodes[i].nfacn);
+        getline(fg, trash_str);
+        getline(fg, trash_str);
+
+        for (int k = 0; k < nodes[i].nfacn; k++){
+            nodes_in[0] = i;
+            new_fn = true;
+            for (int j = 0; j < K - 1; j++){
+                fg >> trash_double;
+                fg >> trash_double;
+                fg >> nodes_in[j + 1];
+                if (nodes_in[j + 1] < nodes_in[0]){
+                    new_fn = false;
+                    neigh = nodes_in[j + 1];
+                }
+                fg >> trash_double;
+                fg >> trash_double;
+            }
+            sort(nodes_in.begin(), nodes_in.end());
+            if (new_fn){
+                nodes[i].fn_in.push_back(fn_count);
+                hedges[fn_count].pos_n.push_back(nodes[i].fn_in.size() - 1);
+                nodes[i].pos_fn.push_back(find_node(nodes_in, i));    
+                for (int w = 0; w < K; w++){
+                    
+                    hedges[fn_count].nodes_in.push_back(nodes_in[w]);
+                }
+                fn_count++;
+            }else{
+                he = find_fn(nodes_in, hedges, nodes[neigh].fn_in);
+                nodes[i].fn_in.push_back(he);
+                nodes[i].pos_fn.push_back(find_node(nodes_in, i));
+                hedges[he].pos_n.push_back(nodes[i].fn_in.size() - 1);
+            }
+
+        }
+    }
+
+    for (long i = 0; i < N; i++){
+        if (nodes[i].nfacn != nodes[i].fn_in.size()){
+            cout << "Problem with node " << i << endl;
+        }
+    }
+
+    fg.close();
+}
+
+
 
 // This function read the links from a file
 void read_links(char *filelinks, long N, long M, int K, Tnode *nodes, Thedge *hedges){
@@ -511,7 +615,7 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
         }
 
         r[bit][1] = rate_walksat(E[bit] + 1, nodes[node].nfacn - E[bit] - 1, K, q, e_av, cj[bit], p_equal, 
-                            p_greater, pneigh, nch_fn);
+                            p_greater, pneigh, nch_fn / 2);
         
         for (int ch_src = 0; ch_src < nch_fn; ch_src++){
             bit = ((ch_src >> plc_he) & 1);
