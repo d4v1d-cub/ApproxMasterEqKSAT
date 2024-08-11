@@ -512,8 +512,8 @@ void comp_pcond(double **prob_joint, double ***pu_cond, double **pi, Thedge *hed
                 int nch_fn){
     double pu;
     int bit;
+    int ch_uns_flip;
     for (long he = 0; he < M; he++){
-        pu = prob_joint[he][hedges[he].ch_unsat];
         for (int w = 0; w < K; w++){
             for (int s = 0; s < 2; s++){
                 pi[w][s] = 0;
@@ -528,9 +528,10 @@ void comp_pcond(double **prob_joint, double ***pu_cond, double **pi, Thedge *hed
         }
 
         for (int w = 0; w < K; w++){
-            for (int s = 0; s < 2; s++){
-                pu_cond[he][w][s] = pu / pi[w][s];
-            }
+            bit = ((hedges[he].ch_unsat >> w) & 1); 
+            ch_uns_flip = (hedges[he].ch_unsat ^ (1 << w));
+            pu_cond[he][w][bit] = prob_joint[he][hedges[he].ch_unsat] / pi[w][bit];
+            pu_cond[he][w][1 - bit] = prob_joint[he][ch_uns_flip] / pi[w][1 - bit];
         }
     }
 }
