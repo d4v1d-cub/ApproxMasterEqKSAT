@@ -692,9 +692,8 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
                  double p0, char *fileener, double tl, double tol = 1e-2, double t0 = 0, double dt0 = 0.01, 
                  double ef = 1e-6, double dt_min = 1e-7){
     double **p_equal, **p_greater;
-    int ***cj;
     double **prob_joint, ***pu_cond, **me_sum, **pi;
-    double e, pu_av, error, dif_norm;                 
+    double e, pu_av, error;                 
                  
     // initalize all arrays that will be used inside the derivative
     init_aux_arr(p_equal, p_greater, max_c, K);
