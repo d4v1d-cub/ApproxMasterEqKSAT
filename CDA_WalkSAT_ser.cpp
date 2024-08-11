@@ -333,7 +333,7 @@ void RK2(Tnode * red, double *** probcond, int N, double step, double cutoff, do
         cout << "tiempo de un paso: " << double(medtiempo2 - medtiempo1) / 60 << endl;
         cout << endl;
 
-        E = energy(M, probjoint, unsat); //probcond1 y prob1 fueron updateados en el primer paso de Runge Kutta
+        E = energy(M, probjoint1, unsat); //probcond1 y prob1 fueron updateados en el primer paso de Runge Kutta
 
         ComputeProbcond(red, probcond, probjoint1, N, numcadenasxfactornode);
         CMEordering(red, probcond, probjoint1, mejoint, tablaLocaleners, lugvecinoswfn, places,
