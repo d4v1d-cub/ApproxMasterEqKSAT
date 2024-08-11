@@ -444,7 +444,7 @@ int main(int argc, char *argv[]) {
     tcheck = 0.25; // tiempo en el que se imprimen los checks
     tiempoprev = 1; // tiempo de la integración previa. Si se van a leer los checks es necesario para leer los ficheros
     step_min = 1e-7;
-    E_min = max(1e-6 * N, 1.0);
+    E_min = 1e-6 * N;
     t0 = 0;
 
     int numcadenasxfactornode = ( int) pow (2, K - 1); //Número de combinaciones de los vecinos de un spin en cada factor node
@@ -552,7 +552,7 @@ int main(int argc, char *argv[]) {
     init_comb_pot_alphas(maxconnect, comb, pot_alphas);
 
     //Esta es la tipa
-    RK2(red, probcond, N, step, cutoff * N, probjoint, fileenergy, K, numcadenasxfactornode,
+    RK2(red, probcond, N, step * N, cutoff * N, probjoint, fileenergy, K, numcadenasxfactornode,
         tablaLocaleners, t0 * N, lugvecinoswfn, places, mejoint, tcheck, filecheck2, M, unsat, Q,
         comb, pot_alphas, P_igual, P_mayor, tol, step_min, E_min);
 
