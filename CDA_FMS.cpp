@@ -644,7 +644,7 @@ double energy(double **prob_joint, Thedge *hedges, long M){
 
 // peforms the integration of the differential equations with the 2nd order Runge-Kutta
 // the method is implemented with adaptive step size
-void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, double eta, int max_c, 
+void RK2_fms(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, double eta, int max_c, 
                  double p0, char *fileener, double tl, double tol = 1e-2, double t0 = 0, double dt0 = 0.01, 
                  double ef = 1e-6, double dt_min = 1e-7){
     double **rates, **pu_l, *fE0, *fE1, *fEnew;
@@ -838,7 +838,7 @@ int main(int argc, char *argv[]) {
     get_info_exc(nodes, hedges, N, M, K);
 
     
-    RK2_walksat(nodes, hedges, N, M, K, nch_fn, eta, max_c, p0, fileener, tl, tol);
+    RK2_fms(nodes, hedges, N, M, K, nch_fn, eta, max_c, p0, fileener, tl, tol);
 
     return 0;
 }
