@@ -317,9 +317,9 @@ void get_info_exc(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_f
             w = (j + 1) % K;
             while (w != j){
                 hedges[he].nodes_exc[j][count] = hedges[he].nodes_in[w];
-                w = (w + 1) % K;
                 bit = ((hedges[he].ch_unsat >> w) & 1);
                 ch_exc += (bit << count);
+                w = (w + 1) % K;
                 count++;
             }
             hedges[he].ch_unsat_exc[j] = ch_exc;
@@ -330,9 +330,9 @@ void get_info_exc(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_f
                 count = 0;
                 w = (j + 1) % K;
                 while (w != j){
-                    w = (w + 1) % K;
                     bit = ((ch >> w) & 1);
                     ch_exc += (bit << count);
+                    w = (w + 1) % K;
                     count++;
                 }
                 hedges[he].ch_exc[j][ch] = ch_exc;
@@ -699,6 +699,7 @@ void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges,
     int he, plc_he, plc_other;
     bool bit, uns, uns_flip, bit_other;
     int ch_flip, ch_exc, ch_exc_flip;
+    long neigh;
     
     double prod[2], r[2][2];
     int E[2];
@@ -1119,20 +1120,20 @@ int main(int argc, char *argv[]) {
     gsl_rng * r;
     init_ran(r, seed_r);
 
-    char filegraph[300];
-    char filelinks[300];
-    sprintf(filegraph, "KSATgraph_K_%d_N_%li_M_%li_simetric_1_model_1_idum1_-2_J_1_ordered.txt", 
-                       K, N, M);
-    sprintf(filelinks, "KSAT_K_%d_enlaces_N_%li_M_%li_idumenlaces_-2_idumgraph_-2_ordered.txt", 
-                       K, N, M);
+    // char filegraph[300];
+    // char filelinks[300];
+    // sprintf(filegraph, "KSATgraph_K_%d_N_%li_M_%li_simetric_1_model_1_idum1_-2_J_1_ordered.txt", 
+    //                    K, N, M);
+    // sprintf(filelinks, "KSAT_K_%d_enlaces_N_%li_M_%li_idumenlaces_-2_idumgraph_-2_ordered.txt", 
+    //                    K, N, M);
 
     char fileener[300]; 
     sprintf(fileener, "CME_WalkSAT_ener_K_%d_N_%li_M_%li_q_%.4lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
             K, N, M, q, tl, seed_r, tol);
 
-    // create_graph(N, M, K, nodes, hedges, r);
-    read_graph_old_order(filegraph, N, M, K, nodes, hedges);
-    read_links(filelinks, N, M, K, nodes, hedges);
+    create_graph(N, M, K, nodes, hedges, r);
+    // read_graph_old_order(filegraph, N, M, K, nodes, hedges);
+    // read_links(filelinks, N, M, K, nodes, hedges);
     int max_c = get_max_c(nodes, N);
     get_info_exc(nodes, hedges, N, M, K, nch_fn);
 
