@@ -850,9 +850,12 @@ void der_walksat(Tnode *nodes, Thedge *hedges, double ****pcav, double ***pu_cav
 
     bool bit;
     for (long i = 0; i < N; i++){
-        bit = ((hedges[nodes[i].fn_in[0]].ch_unsat >> nodes[i].pos_fn[0]) & 1);  
-        me_sum[i] = der_single_node(pi[i], sums_save[i], 
-                                    pu_cav[nodes[i].fn_in[0]][nodes[i].pos_fn[0]], bit);
+        if (nodes[i].nfacn > 0){
+            bit = ((hedges[nodes[i].fn_in[0]].ch_unsat >> nodes[i].pos_fn[0]) & 1);  
+            me_sum[i] = der_single_node(pi[i], sums_save[i], 
+                                        pu_cav[nodes[i].fn_in[0]][nodes[i].pos_fn[0]], 
+                                        bit);
+        }
     }
 
 }
