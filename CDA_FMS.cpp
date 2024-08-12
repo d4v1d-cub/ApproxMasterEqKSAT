@@ -32,8 +32,8 @@ typedef struct{
     int **pos_fn_exc;   // position in the remaining fn in the same order as in fn_exc.
     int **fn_link_0;    // factor nodes where the node has a positive link
     int **fn_link_1;    // factor nodes where the node has a negative link
-    int count_l0;       // number of factor nodes in fn_link_0
-    int count_l1;       // number of factor nodes in fn_link_1
+    int *count_l0;       // number of factor nodes in fn_link_0
+    int *count_l1;       // number of factor nodes in fn_link_1
 }Tnode;
 
 
@@ -336,6 +336,8 @@ void get_info_exc(Tnode *nodes, Thedge *hedges, long N, long M, int K){
         nodes[i].pos_fn_exc = new int *[nodes[i].nfacn];
         nodes[i].fn_link_0 = new int *[nodes[i].nfacn];
         nodes[i].fn_link_1 = new int *[nodes[i].nfacn];
+        nodes[i].count_l0 = new int [nodes[i].nfacn];
+        nodes[i].count_l1 = new int [nodes[i].nfacn];
         for (int hind = 0; hind < nodes[i].nfacn; hind++){
             nodes[i].fn_exc[hind] = new long [nodes[i].nfacn - 1];
             nodes[i].pos_fn_exc[hind] = new int [nodes[i].nfacn - 1];
@@ -356,8 +358,8 @@ void get_info_exc(Tnode *nodes, Thedge *hedges, long N, long M, int K){
                 other = (other + 1) % nodes[i].nfacn;
             }
 
-            nodes[i].count_l0 = count_l0;
-            nodes[i].count_l1 = count_l1;
+            nodes[i].count_l0[hind] = count_l0;
+            nodes[i].count_l1[hind] = count_l1;
             nodes[i].fn_link_0[hind] = new int [count_l0];
             nodes[i].fn_link_1[hind] = new int [count_l1];
             
@@ -387,6 +389,23 @@ int get_max_c(Tnode *nodes, long N){
         }
     }
     return max_c;
+}
+
+
+void init_aux_arr(double **&rates, double **&pu_l, double *&fE0, double *&fE1,
+                  double *&fEnew, int max_c){
+    rates = new double *[max_c + 1];
+    fE0 = new double [max_c];
+    fE1 = new double [max_c];
+    fEnew = new double [max_c];
+    for (int i = 0; i < max_c + 1; i++){
+        rates[i] = new double [max_c + 1];
+    }
+
+    pu_l = new double *[2];
+    for (int s = 0; s < 2; s++){
+        pu_l[s] = new double [max_c];
+    }
 }
 
 
@@ -504,13 +523,13 @@ void comp_pcond(double **prob_joint, double ***pu_cond, double **pi, Thedge *hed
 // si=1 (pu_l[0]) and the ones unsatisfied by si=-1 (pu_l[1])
 void get_pu_l(double ***pu_cond, double **pu_l, int fn_src, Tnode node){
     int index;
-    for (int i = 0; i < node.count_l1; i++){
+    for (int i = 0; i < node.count_l1[fn_src]; i++){
         index = node.fn_link_1[fn_src][i];
         pu_l[0][i] = pu_cond[node.fn_in[index]][node.pos_fn[index]][0];
         // The links whose value is -1 (fn_link_1) are the ones unsatisfied by the
         // node if it has the value 1 (index 0 in the arrays)
     }
-    for (int i = 0; i < node.count_l0; i++){
+    for (int i = 0; i < node.count_l0[fn_src]; i++){
         index = node.fn_link_0[fn_src][i];
         pu_l[1][i] = pu_cond[node.fn_in[index]][node.pos_fn[index]][1];
         // The links whose value is -1 (fn_link_1) are the ones unsatisfied by the
@@ -544,102 +563,58 @@ void recursive_marginal(double *pu, int c, int k, double *fE, double *fEnew){
 // fn_src is the origin factor node where one is computing the derivative
 // part_uns is 1 if the other variables in fn_src are partially
 // unsatisfying their links, and is 0 otherwise. 
-void sum_walksat(long node, int fn_src, Tnode *nodes, Thedge *hedges, 
-                 double *prob_joint, double ***pu_cond, double **binom_probs, 
-                 double **binom_sums, int K, int nch_fn, double q, 
-                 double e_av, double *me_sum_src, int max_c){
-    int he, plc_he;
-    bool bit, uns, uns_flip;
-    int ch_flip;
+void sum_fms(long node, int fn_src, Tnode *nodes, Thedge *hedges, 
+             double *prob_joint, double ***pu_cond, double **rates, double **pu_l, 
+             double *fE0, double *fE1, double *fEnew, int nch_fn, 
+             double e_av, double *me_sum_src){
     
-    double prod[2], r[2][2];
+    get_pu_l(pu_cond, pu_l, fn_src, nodes[node]);
+    // remember that when l=1 the unsatisfying assingment is si=-1
+    // therefore, count_l1 corresponds to pu_l[0], and count_l0 to pu_l[1]
+    recursive_marginal(pu_l[0], nodes[node].count_l1[fn_src], 0, fE0, fEnew);
+    recursive_marginal(pu_l[1], nodes[node].count_l0[fn_src], 0, fE1, fEnew);
+
+    double terms[2][2];
     int E[2];
-    double **pneigh = new double *[K - 1];
-    for (int j = 0; j < K - 1; j++){
-        pneigh[j] = new double [2];
-    }
 
-    int ***cj = new int **[2];
-    for (int s = 0; s < 2; s++){
-        cj[s] = new int *[nodes[node].nfacn];
-        for (int h = 0; h < nodes[node].nfacn; h++){
-            cj[s][h] = new int [K - 1];
-        }
-    }
-    
+    long he;
+    int plc_he, ch_flip;
+    bool bit, uns, uns_flip;
+    double prod;
 
-    for (long ch = 0; ch < nodes[node].nch / 2; ch++){
-        prod[0] = prodcond(pu_cond, fn_src, nodes[node], 0, ch);
-        prod[1] = prodcond(pu_cond, fn_src, nodes[node], 1, ch);
-        E[0] = 0;
-        E[1] = 0;
-        for (int other = 0; other < nodes[node].nfacn - 1; other++){
-            if ((ch >> other) & 1){
-                he = nodes[node].fn_exc[fn_src][other];
-                plc_he = nodes[node].pos_fn_exc[fn_src][other];
-                bit = ((hedges[he].ch_unsat >> plc_he) & 1);  // if s=0 unsatisfies the clause, 
-                // bit = 0 (false), otherwise bit = 1.
-                for (int h = 0; h < K - 1; h++){
-                    cj[bit][E[bit]][h] = 
-                            nodes[hedges[he].nodes_exc[plc_he][h]].nfacn;
-                    // It's the connectivity of one of the other nodes inside the factor node: 
-                    // 'he = nodes[node].fn_in[hind]'
-                }
-                E[bit]++;
+    for (E[0] = 0; E[0] < nodes[node].count_l1[fn_src]; E[0]++){
+        for (E[1] = 0; E[1] < nodes[node].count_l0[fn_src]; E[1]++){
+            prod = fE0[E[0]] * fE1[E[1]];
+
+            terms[0][0] = rate_fms(E[0], E[1], rates, e_av) * prod;
+            terms[1][0] = rate_fms(E[1], E[0], rates, e_av) * prod;
+
+            terms[bit][1] = rate_fms(E[bit] + 1, E[1 - bit], rates, e_av) * prod;
+
+            terms[1 - bit][1] = rate_fms(E[1 - bit], E[bit] + 1, rates, e_av) * prod;
+
+            for (int ch_src = 0; ch_src < nch_fn; ch_src++){
+                bit = ((ch_src >> plc_he) & 1);
+                ch_flip = (ch_src ^ (1 << plc_he));
+                uns = (ch_src == hedges[he].ch_unsat);
+                uns_flip = (ch_flip == hedges[he].ch_unsat);
+                me_sum_src[ch_src] += -terms[bit][uns + uns_flip] * prob_joint[ch_src] + 
+                                      terms[1 - bit][uns + uns_flip] * prob_joint[ch_flip];
+                // if any of the two, uns and uns_flip, is one, then one has to use the terms
+                // in terms[1]. One of them represents the probability of a jump when ch_src in unsat,
+                // and therefore it goes from E[bit unsat] + 1 ----> E[bit sat]. The other jump makes
+                // E[bit sat] ----> E[bit unsat] + 1
             }
-        }
 
-        r[0][0] = rate_walksat(E[0], nodes[node].nfacn - E[0], K, q, e_av, cj[0], binom_probs, 
-                            binom_sums, pneigh, nch_fn / 2);
-        r[1][0] = rate_walksat(E[1], nodes[node].nfacn - E[1], K, q, e_av, cj[1], binom_probs, 
-                            binom_sums, pneigh, nch_fn / 2);
-
-        he = nodes[node].fn_in[fn_src];
-        plc_he = nodes[node].pos_fn[fn_src];
-        bit = ((hedges[he].ch_unsat >> plc_he) & 1);  
-        for (int h = 0; h < K - 1; h++){
-            cj[bit][E[bit]][h] = 
-                nodes[hedges[he].nodes_exc[plc_he][h]].nfacn;
-                    // It's the connectivity of one of the other nodes inside the factor node: 
-                    // 'he = nodes[node].fn_in[hind]'
-        }
-
-        r[bit][1] = rate_walksat(E[bit] + 1, nodes[node].nfacn - E[bit] - 1, K, q, e_av, cj[bit], binom_probs, 
-                            binom_sums, pneigh, nch_fn / 2);
-        
-        for (int ch_src = 0; ch_src < nch_fn; ch_src++){
-            bit = ((ch_src >> plc_he) & 1);
-            ch_flip = (ch_src ^ (1 << plc_he));
-            uns = (ch_src == hedges[he].ch_unsat);
-            uns_flip = (ch_flip == hedges[he].ch_unsat);
-            me_sum_src[ch_src] += -r[bit][uns] * prod[bit] * prob_joint[ch_src] + 
-                                  r[1 - bit][uns_flip] * prod[1 - bit] * prob_joint[ch_flip];
         }
     }
-
-    for (int j = 0; j < K - 1; j++){
-        delete []pneigh[j];
-    }
-    delete [] pneigh;
-    pneigh = NULL;
-    
-
-    for (int s = 0; s < 2; s++){
-        for (int h = 0; h < nodes[node].nfacn; h++){
-            delete [] cj[s][h];
-        }
-        delete [] cj[s];
-    }
-    delete []cj;
-    cj = NULL;
-
 }
 
 
 // it computes all the derivatives of the joint probabilities
-void der_walksat(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***pu_cond, 
-                 double **binom_probs, double **binom_sums, long M, int K, int nch_fn, 
-                 double q, double e_av, double **me_sum, int max_c){
+void der_fms(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***pu_cond, 
+             double **rates, double **pu_l, double *fE0, double *fE1, double *fEnew, 
+             long M, int K, int nch_fn, double e_av, double **me_sum){
     for (long he = 0; he < M; he++){
         for (int ch = 0; ch < nch_fn; ch++){
             me_sum[he][ch] = 0;
@@ -650,9 +625,9 @@ void der_walksat(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***pu
     #pragma omp parallel for
     for (long he = 0; he < M; he++){
         for (int w = 0; w < K; w++){
-            sum_walksat(hedges[he].nodes_in[w], hedges[he].pos_n[w], nodes, hedges, 
-                        prob_joint[he], pu_cond, binom_probs, binom_sums, K, nch_fn,
-                        q, e_av, me_sum[he], max_c);
+            sum_fms(hedges[he].nodes_in[w], hedges[he].pos_n[w], nodes, hedges, 
+                    prob_joint[he], pu_cond, rates, pu_l, fE0, fE1, fEnew, nch_fn, e_av, 
+                    me_sum[he]);
         }
     }
 }
@@ -667,29 +642,21 @@ double energy(double **prob_joint, Thedge *hedges, long M){
 }
 
 
-double norm(double *probs, int nelems){
-    double n = 0;
-    for (int i = 0; i < nelems; i++){
-        n += probs[i];
-    }
-    return n;
-}
-
-
 // peforms the integration of the differential equations with the 2nd order Runge-Kutta
 // the method is implemented with adaptive step size
-void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, double q, int max_c, 
+void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, double eta, int max_c, 
                  double p0, char *fileener, double tl, double tol = 1e-2, double t0 = 0, double dt0 = 0.01, 
                  double ef = 1e-6, double dt_min = 1e-7){
-    double **binom_probs, **binom_sums;
+    double **rates, **pu_l, *fE0, *fE1, *fEnew;
     double **prob_joint, ***pu_cond, **me_sum, **pi;
     double e, pu_av, error;                 
                  
     // initalize all arrays that will be used inside the derivative
-    init_aux_arr(binom_probs, binom_sums, max_c, K);
+    init_aux_arr(rates, pu_l, fE0, fE1, fEnew, max_c);
+    
+    table_all_rates(max_c, K, eta, rates);
+    
     init_probs(prob_joint, pu_cond, pi, me_sum, M, K, nch_fn, p0);
-
-
 
     // initialize auxiliary arrays for the Runge-Kutta integration
     double **k1, **k2, **prob_joint_1;
@@ -717,10 +684,9 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
         auto t1 = std::chrono::high_resolution_clock::now();
 
         comp_pcond(prob_joint, pu_cond, pi, hedges, M, K, nch_fn);
-        get_all_binom_sums(max_c, pu_av, binom_probs, binom_sums);
 
-        der_walksat(nodes, hedges, prob_joint, pu_cond, binom_probs, binom_sums, 
-                    M, K, nch_fn, q, e / N, me_sum, max_c);   // in the rates, I use the energy density
+        der_fms(nodes, hedges, prob_joint, pu_cond, rates, pu_l, fE0, fE1, fEnew, 
+                M, K, nch_fn, e / N, me_sum);   // in the rates, I use the energy density
 
         valid = true;
         for (long he = 0; he < M; he++){
@@ -757,10 +723,9 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
         e = energy(prob_joint_1, hedges, M);
         pu_av = e / M;
         comp_pcond(prob_joint_1, pu_cond, pi, hedges, M, K, nch_fn);
-        get_all_binom_sums(max_c, pu_av, binom_probs, binom_sums);
 
-        der_walksat(nodes, hedges, prob_joint_1, pu_cond, binom_probs, binom_sums, 
-                    M, K, nch_fn, q, e / N, me_sum, max_c);
+        der_fms(nodes, hedges, prob_joint_1, pu_cond, rates, pu_l, fE0, fE1, fEnew, 
+                M, K, nch_fn, e / N, me_sum);
             
         valid = true;
         for (long he = 0; he < M; he++){
@@ -839,7 +804,7 @@ int main(int argc, char *argv[]) {
     long M = atol(argv[2]);
     int K = atoi(argv[3]);
     unsigned long seed_r = atol(argv[4]);
-    double q = atof(argv[5]);
+    double eta = atof(argv[5]);
     double tl = atof(argv[6]);
     double tol = atof(argv[7]);
     int nthr = atoi(argv[8]);
@@ -863,8 +828,8 @@ int main(int argc, char *argv[]) {
     //                    K, N, M);
 
     char fileener[300]; 
-    sprintf(fileener, "CDA_FMS_ener_K_%d_N_%li_M_%li_q_%.4lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
-            K, N, M, q, tl, seed_r, tol);
+    sprintf(fileener, "CDA_FMS_ener_K_%d_N_%li_M_%li_eta_%.4lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
+            K, N, M, eta, tl, seed_r, tol);
 
     create_graph(N, M, K, nodes, hedges, r);
     // read_graph_old_order(filegraph, N, M, K, nodes, hedges);
@@ -873,7 +838,7 @@ int main(int argc, char *argv[]) {
     get_info_exc(nodes, hedges, N, M, K);
 
     
-    RK2_walksat(nodes, hedges, N, M, K, nch_fn, q, max_c, p0, fileener, tl, tol);
+    RK2_walksat(nodes, hedges, N, M, K, nch_fn, eta, max_c, p0, fileener, tl, tol);
 
     return 0;
 }
