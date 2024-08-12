@@ -79,32 +79,6 @@
             "miDebuggerPath": "/usr/bin/gdb"
         },
         {
-            "name": "C/C++: g++-11 CME WalkSAT ser",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "${fileDirname}/Debug/CME_WalkSAT_ser.out",
-            "args": ["100", "240", "3", "2", "20.0", "0.1", "0.01", "1e-3", "0"],
-            "stopAtEntry": false,
-            "cwd": "${fileDirname}/Debug",
-            "environment": [],
-            "externalConsole": false,
-            "MIMode": "gdb",
-            "setupCommands": [
-                {
-                    "description": "Enable pretty-printing for gdb",
-                    "text": "-enable-pretty-printing",
-                    "ignoreFailures": true
-                },
-                {
-                    "description": "Set Disassembly Flavor to Intel",
-                    "text": "-gdb-set disassembly-flavor intel",
-                    "ignoreFailures": true
-                }
-            ],
-            "preLaunchTask": "C/C++: g++-11 CME WalkSAT ser",
-            "miDebuggerPath": "/usr/bin/gdb"
-        },
-        {
             "name": "C/C++: g++-11 CME WalkSAT",
             "type": "cppdbg",
             "request": "launch",

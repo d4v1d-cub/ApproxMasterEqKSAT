@@ -30,6 +30,10 @@ typedef struct{
     long **fn_exc;  // remaining factor nodes after one removes a specific factor node
                     // first index: removed fn, second index: list of remaining fn.
     int **pos_fn_exc;   // position in the remaining fn in the same order as in fn_exc.
+    int **fn_link_0;    // factor nodes where the node has a positive link
+    int **fn_link_1;    // factor nodes where the node has a negative link
+    int count_l0;       // number of factor nodes in fn_link_0
+    int count_l1;       // number of factor nodes in fn_link_1
 }Tnode;
 
 
@@ -326,19 +330,48 @@ void get_info_exc(Tnode *nodes, Thedge *hedges, long N, long M, int K){
         } 
     }
 
-    int other;
+    int other, count_l0, count_l1;
     for (long i = 0; i < N; i++){
         nodes[i].fn_exc = new long *[nodes[i].nfacn];
         nodes[i].pos_fn_exc = new int *[nodes[i].nfacn];
+        nodes[i].fn_link_0 = new int *[nodes[i].nfacn];
+        nodes[i].fn_link_1 = new int *[nodes[i].nfacn];
         for (int hind = 0; hind < nodes[i].nfacn; hind++){
             nodes[i].fn_exc[hind] = new long [nodes[i].nfacn - 1];
             nodes[i].pos_fn_exc[hind] = new int [nodes[i].nfacn - 1];
             other = (hind + 1) % nodes[i].nfacn;
             count = 0;
+            count_l0 = 0;
+            count_l1 = 0;
             while (other != hind){
                 nodes[i].fn_exc[hind][count] = nodes[i].fn_in[other];
                 nodes[i].pos_fn_exc[hind][count] = nodes[i].pos_fn[other];
+
+                if (hedges[nodes[i].fn_in[other]].links[nodes[i].pos_fn[other]] == 1){
+                    count_l0++;
+                }else{
+                    count_l1++;
+                }
                 count++;
+                other = (other + 1) % nodes[i].nfacn;
+            }
+
+            nodes[i].count_l0 = count_l0;
+            nodes[i].count_l1 = count_l1;
+            nodes[i].fn_link_0[hind] = new int [count_l0];
+            nodes[i].fn_link_1[hind] = new int [count_l1];
+            
+            other = (hind + 1) % nodes[i].nfacn;
+            count_l0 = 0;
+            count_l1 = 0;
+            while (other != hind){
+                if (hedges[nodes[i].fn_in[other]].links[nodes[i].pos_fn[other]] == 1){
+                    nodes[i].fn_link_0[hind][count_l0] = other;
+                    count_l0++;
+                }else{
+                    nodes[i].fn_link_1[hind][count_l1] = other;
+                    count_l1++;
+                }
                 other = (other + 1) % nodes[i].nfacn;
             }
         }
@@ -410,106 +443,30 @@ void init_RK_arr(double **&k1, double **&k2, double **&prob_joint_1, long M,
 
 
 // rate of the Focused Metropolis Search algorithm.
-double rate_fms(int E0, int E1, int K, double eta, double e_av){
+double rate_fms(int E0, int E1, int K, double eta){
     double dE = E1 - E0;
     if (dE > 0){
-        return E0 / K / e_av * pow(eta, -dE);
+        return E0 / K * pow(eta, -dE);
     }else{
-        return E0 / K / e_av;
+        return E0 / K;
     }
 }
 
 
-// initializes the arrays where the binomial weights will be stored. Those arrays are used 
-// to compute the probability of selecting the variable belonging to the smallest number 
-// of satisfied clauses
-void init_aux_arr(double **&binom_probs, double **&binom_sums, int max_c, int K){
-    binom_probs = new double *[max_c];
-    for (int gj = 0; gj < max_c; gj++){
-        binom_probs[gj] = new double[gj + 1];
-    }
-
-    binom_sums = new double *[max_c];
-    for (int s = 0; s < max_c; s++){
-        binom_sums[s] = new double[max_c - s];
-    }
-}
-
-
-// it computes the binomial weights
-void get_all_binom_sums(int max_c, double pu_av, double **binom_probs, 
-                        double **binom_sums){
-    for (int gj = 0; gj < max_c; gj++){
-        for (int sj = 0; sj < gj + 1; sj++){
-            binom_probs[gj][sj] = gsl_ran_binomial_pdf(sj, 1 - pu_av, gj);
-        }
-    }
-    
-    for (int si = 0; si < max_c; si++){
-        for (int gj = si; gj < max_c; gj++){
-            binom_sums[si][gj - si] = gsl_cdf_binomial_Q(si, 1 - pu_av, gj);
+void table_all_rates(int max_c, int K, double eta, double **&rates){
+    rates = new double *[max_c + 1];
+    for (int E0 = 0; E0 < max_c + 1; E0++){
+        rates[E0] = new double [max_c + 1];
+        for (int E1 = 0; E1 < max_c + 1; E1++){
+            rates[E0][E1] = rate_fms(E0, E1, K, eta);
         }
     }
 }
 
 
-
-// it fills the array of the probabilities to be used when computing the walksat rate
-void fill_pneigh(int S, int *cj, double **binom_probs, double **binom_sums, 
-                 double **pneigh, int K){
-    for (int j = 0; j < K - 1; j++){
-        pneigh[j][0] = binom_probs[cj[j] - 1][S];
-        pneigh[j][1] = binom_sums[S][cj[j] - 1 - S];
-    }
+double rate_fms(int E0, int E1, double **rates, double e_av){
+    return rates[E0][E1] / e_av;
 }
-
-
-// rate of the walksat algorithm used by Barthel et al. in 2003
-// cj is a list of all the connectivities of the neighbors of node i that are 
-// in unsatisfied clauses
-// nch_exc is the number of possible combinations of the K-1 other variables in the clause
-// therefore, nch_exc = 2^(K-1)
-double rate_walksat(int E0, int S, int K, double q, double e_av, 
-                    int **cj, double **binom_probs, double **binom_sums, 
-                    double **pneigh, int nch_exc){
-    bool cond;
-    double cumul, prod;
-    int cumul_bits, bit, k;
-    cumul = 0;
-    for (int fn = 0; fn < E0; fn++){
-        cond = true;
-        k = 0;
-        while (k < K - 1 && cond){
-            if (cj[fn][k] - 1 < S){
-                cond = false;    // if one of the other nodes in the clause has less 
-                // than 'S' neighbors, it cannot belong to more than 'S' satisfied clauses
-                // therefore, the variable for which one is computing the rate cannot be chosen
-                // by walksat dynamics over that neighbor in that specific clause
-            }
-            k++;
-        }
-        if (cond){   
-            fill_pneigh(S, cj[fn], binom_probs, binom_sums, pneigh, K);
-            for (int ch = 0; ch < nch_exc; ch++){
-                prod = 1;
-                cumul_bits = 0;
-                for (int w = 0; w < K - 1; w++){
-                    bit = ((ch >> w) & 1);
-                    prod *= pneigh[w][bit];  // when bit=0, one uses the probability 
-                    // of finding that the neighbor (fn, w) belongs to the exact same number of
-                    // satisfied clauses. When bit=1, one uses the probability that the neighbor
-                    // (fn, w) belongs to more than S satisfied clauses.
-                    cumul_bits += 1 - bit;
-                }
-                cumul += prod / (cumul_bits + 1);  // When other neighbors have the same 
-                // number of satisfied clauses S, the variable inside the rate will be picked 
-                // uniformly at random among those variables with the same S.
-            }
-        }
-    }
-    return q * E0 / e_av / K + (1 - q) * cumul / e_av; 
-}
-
 
 
 // it computes the conditional probabilities of having a partially unsatisfied clause, given the 
@@ -543,19 +500,45 @@ void comp_pcond(double **prob_joint, double ***pu_cond, double **pi, Thedge *hed
 }
 
 
-// It takes the product over all the conditional probabilities of the neighboring factor nodes,
-// except for the origin fn_src
-double prodcond(double ***pu_cond, int fn_src, Tnode node, int s, long ch){
-    double prod = 1;
-    int bit;
-    for (int other = 0; other < node.nfacn - 1; other++){
-        bit = ((ch >> other) & 1);
-        prod *= 1 - bit - 
-                (1 - 2 * bit) * pu_cond[node.fn_exc[fn_src][other]][node.pos_fn_exc[fn_src][other]][s];
+// it gets the conditional probabilities for the factor nodes unsatisfied by
+// si=1 (pu_l[0]) and the ones unsatisfied by si=-1 (pu_l[1])
+void get_pu_l(double ***pu_cond, double **pu_l, int fn_src, Tnode node){
+    int index;
+    for (int i = 0; i < node.count_l1; i++){
+        index = node.fn_link_1[fn_src][i];
+        pu_l[0][i] = pu_cond[node.fn_in[index]][node.pos_fn[index]][0];
+        // The links whose value is -1 (fn_link_1) are the ones unsatisfied by the
+        // node if it has the value 1 (index 0 in the arrays)
     }
-    return prod;
+    for (int i = 0; i < node.count_l0; i++){
+        index = node.fn_link_0[fn_src][i];
+        pu_l[1][i] = pu_cond[node.fn_in[index]][node.pos_fn[index]][1];
+        // The links whose value is -1 (fn_link_1) are the ones unsatisfied by the
+        // node if it has the value 1 (index 0 in the arrays)
+    }
 }
 
+
+// This function recursively computes a vector fE[k], with k=0,..., c
+// fE[k] is the sum of 'c' binary variable constrained to sum exactly 'k' and weighted
+// with a factorized distribution pu[i], with i = 0,..., c-1
+void recursive_marginal(double *pu, int c, int k, double *fE, double *fEnew){
+    if (k < c){
+        fEnew[0] = (1 - pu[k]) * fE[0];
+        for (int i = 0; i < k; i++){
+            fEnew[i + 1] = (1 - pu[k]) * fE[i + 1] + pu[k] * fE[i];
+        }
+        fEnew[k + 1] = pu[k] * fE[k];
+        recursive_marginal(pu, c, k + 1, fEnew, fE);
+        // it inverts the order of fEnew and fE so that in the new call the latest
+        // info is saved in the inner variable fE
+    }else{
+        for (int i = 0; i < c; i++){
+            fEnew[i] = fE[i];
+            // it makes sure that both arrays contain the latest values
+        }
+    }
+}
 
 // it does the sum in the derivative of the CDA equations
 // fn_src is the origin factor node where one is computing the derivative
