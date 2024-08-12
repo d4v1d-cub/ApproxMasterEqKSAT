@@ -157,17 +157,6 @@ int find_node(vector <long> nodes_in, long node){
 }
 
 
-vector <long> check_fn(long M, Thedge *hedges, int K){
-    vector <long> answ;
-    for (long he = 0; he < M; he++){
-        if(hedges[he].pos_n.size() < K){
-            answ.push_back(he);
-        }
-    }
-    return answ;
-}
-
-
 void read_graph_old_order(char *filegraph, long N, long M, int K, 
                           Tnode *&nodes, Thedge *&hedges){
     
@@ -465,17 +454,15 @@ void init_RK_arr(double **&k1, double **&k2, double **&prob_joint_1, long M,
 double rate_fms(int E0, int E1, int K, double eta){
     double dE = E1 - E0;
     if (dE > 0){
-        return E0 / K * pow(eta, -dE);
+        return double(E0) / K * pow(eta, dE);
     }else{
-        return E0 / K;
+        return double(E0) / K;
     }
 }
 
 
-void table_all_rates(int max_c, int K, double eta, double **&rates){
-    rates = new double *[max_c + 1];
+void table_all_rates(int max_c, int K, double eta, double **rates){
     for (int E0 = 0; E0 < max_c + 1; E0++){
-        rates[E0] = new double [max_c + 1];
         for (int E1 = 0; E1 < max_c + 1; E1++){
             rates[E0][E1] = rate_fms(E0, E1, K, eta);
         }
@@ -552,7 +539,7 @@ void recursive_marginal(double *pu, int c, int k, double *fE, double *fEnew){
         // it inverts the order of fEnew and fE so that in the new call the latest
         // info is saved in the inner variable fE
     }else{
-        for (int i = 0; i < c; i++){
+        for (int i = 0; i < c + 1; i++){
             fEnew[i] = fE[i];
             // it makes sure that both arrays contain the latest values
         }
@@ -571,6 +558,8 @@ void sum_fms(long node, int fn_src, Tnode *nodes, Thedge *hedges,
     get_pu_l(pu_cond, pu_l, fn_src, nodes[node]);
     // remember that when l=1 the unsatisfying assingment is si=-1
     // therefore, count_l1 corresponds to pu_l[0], and count_l0 to pu_l[1]
+    fE0[0] = 1;
+    fE1[0] = 1;
     recursive_marginal(pu_l[0], nodes[node].count_l1[fn_src], 0, fE0, fEnew);
     recursive_marginal(pu_l[1], nodes[node].count_l0[fn_src], 0, fE1, fEnew);
 
@@ -582,24 +571,27 @@ void sum_fms(long node, int fn_src, Tnode *nodes, Thedge *hedges,
     bool bit, uns, uns_flip;
     double prod;
 
-    for (E[0] = 0; E[0] < nodes[node].count_l1[fn_src]; E[0]++){
-        for (E[1] = 0; E[1] < nodes[node].count_l0[fn_src]; E[1]++){
+    for (E[0] = 0; E[0] < nodes[node].count_l1[fn_src] + 1; E[0]++){
+        for (E[1] = 0; E[1] < nodes[node].count_l0[fn_src] + 1; E[1]++){
             prod = fE0[E[0]] * fE1[E[1]];
 
             terms[0][0] = rate_fms(E[0], E[1], rates, e_av) * prod;
             terms[1][0] = rate_fms(E[1], E[0], rates, e_av) * prod;
 
+            he = nodes[node].fn_in[fn_src];
+            plc_he = nodes[node].pos_fn[fn_src];
+            bit = ((hedges[he].ch_unsat >> plc_he) & 1);
+
             terms[bit][1] = rate_fms(E[bit] + 1, E[1 - bit], rates, e_av) * prod;
-
             terms[1 - bit][1] = rate_fms(E[1 - bit], E[bit] + 1, rates, e_av) * prod;
-
+            
             for (int ch_src = 0; ch_src < nch_fn; ch_src++){
                 bit = ((ch_src >> plc_he) & 1);
                 ch_flip = (ch_src ^ (1 << plc_he));
                 uns = (ch_src == hedges[he].ch_unsat);
                 uns_flip = (ch_flip == hedges[he].ch_unsat);
-                me_sum_src[ch_src] += -terms[bit][uns + uns_flip] * prob_joint[ch_src] + 
-                                      terms[1 - bit][uns + uns_flip] * prob_joint[ch_flip];
+                me_sum_src[ch_src] += -terms[bit][uns || uns_flip] * prob_joint[ch_src] + 
+                                      terms[1 - bit][uns || uns_flip] * prob_joint[ch_flip];
                 // if any of the two, uns and uns_flip, is one, then one has to use the terms
                 // in terms[1]. One of them represents the probability of a jump when ch_src in unsat,
                 // and therefore it goes from E[bit unsat] + 1 ----> E[bit sat]. The other jump makes

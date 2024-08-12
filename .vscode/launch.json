@@ -31,7 +31,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${fileDirname}/Debug/CDA_FMS.out",
-            "args": ["100", "240", "3", "1", "0.1", "20.0", "1e-5", "3"],
+            "args": ["1000", "2450", "3", "1", "1.0", "50.0", "1e-3", "1"],
             "stopAtEntry": false,
             "cwd": "${fileDirname}/Debug",
             "environment": [],
