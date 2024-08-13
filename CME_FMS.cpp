@@ -1068,7 +1068,7 @@ int main(int argc, char *argv[]) {
     //                    K, N, M);
 
     char fileener[300]; 
-    sprintf(fileener, "CME_WalkSAT_ener_K_%d_N_%li_M_%li_eta_%.4lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
+    sprintf(fileener, "CME_FMS_ener_K_%d_N_%li_M_%li_eta_%.4lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
             K, N, M, eta, tl, seed_r, tol);
 
     create_graph(N, M, K, nodes, hedges, r);
