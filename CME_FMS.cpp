@@ -43,6 +43,10 @@ typedef struct{
     vector <int> links; // links to those nodes
     vector <int> pos_n;   // position in each node's list of factor nodes.
     long **nodes_exc;   // remaining nodes after one removes a specific node from the factor node.
+    int *ch_unsat_exc;   // an array containing the partially unsat configuration of the other 
+                         // nodes inside the clause if one removes one node.
+    int **ch_exc;        // an array containing the configuration of the other 
+                         // nodes inside the clause if one removes one node.
 }Thedge;
 
 
@@ -303,18 +307,39 @@ void create_graph(long N, long M, int K, Tnode *&nodes, Thedge *&hedges, gsl_rng
 }
 
 
-void get_info_exc(Tnode *nodes, Thedge *hedges, long N, long M, int K){
-    int w, count;
+void get_info_exc(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn){
+    int w, count, ch_exc;
+    bool bit;
     for (long he = 0; he < M; he++){
         hedges[he].nodes_exc = new long *[K];
+        hedges[he].ch_unsat_exc = new int [K];
+        hedges[he].ch_exc = new int *[K];
         for (int j = 0; j < K; j++){
+            ch_exc = 0;
             hedges[he].nodes_exc[j] = new long [K - 1];
             count = 0;
             w = (j + 1) % K;
             while (w != j){
                 hedges[he].nodes_exc[j][count] = hedges[he].nodes_in[w];
+                bit = ((hedges[he].ch_unsat >> w) & 1);
+                ch_exc += (bit << count);
                 w = (w + 1) % K;
                 count++;
+            }
+            hedges[he].ch_unsat_exc[j] = ch_exc;
+
+            hedges[he].ch_exc[j] = new int [nch_fn]; 
+            for (int ch = 0; ch < nch_fn; ch++){ // translation of the whole clause chain 'ch'
+                ch_exc = 0;                      // into the chain that sees one of the variables inside 
+                count = 0;
+                w = (j + 1) % K;
+                while (w != j){
+                    bit = ((ch >> w) & 1);
+                    ch_exc += (bit << count);
+                    w = (w + 1) % K;
+                    count++;
+                }
+                hedges[he].ch_exc[j][ch] = ch_exc;
             }
         } 
     }
@@ -337,7 +362,7 @@ void get_info_exc(Tnode *nodes, Thedge *hedges, long N, long M, int K){
             while (other != hind){
                 nodes[i].fn_exc[hind][count] = nodes[i].fn_in[other];
                 nodes[i].pos_fn_exc[hind][count] = nodes[i].pos_fn[other];
-
+                
                 if (hedges[nodes[i].fn_in[other]].links[nodes[i].pos_fn[other]] == 1){
                     count_l0++;
                 }else{
@@ -408,53 +433,87 @@ void init_aux_arr(double **&rates, double ***&pu_l, double ***&fE,
 
 
 // initializes all the joint and conditional probabilities
-void init_probs(double **&prob_joint, double ***&pu_cond, double **&pi, double **&me_sum, long M, int K, 
-                int nch_fn, double p0){
+void init_probs(double ****&pcav, double ***&pu_cav, double *&pi, double ****&cme_sum, 
+                double *&me_sum, double ***&sums_save, long N, long M, int K, int nch_exc, 
+                double p0){
     double prod;
     int bit;
-    prob_joint = new double *[M];
-    me_sum = new double *[M];
-    pu_cond = new double **[M];
-    for (long he = 0; he < M; he++){
-        prob_joint[he] = new double [nch_fn];
-        me_sum[he] = new double [nch_fn];
-        for (int ch = 0; ch < nch_fn; ch++){
-            prod = 1;
-            for (int w = 0; w < K; w++){
-                bit = ((ch >> w) & 1);
-                prod *= (bit + (1 - 2 * bit) * p0);
-            }
-            prob_joint[he][ch] = prod;
-        }
-
-        pu_cond[he] = new double*[K];
-        for (int w = 0; w < K; w++){
-            pu_cond[he][w] = new double [2];
+    me_sum = new double [N];
+    pi = new double [N];
+    sums_save = new double **[N];
+    for (long i = 0; i < N; i++){
+        pi[i] = p0;
+        sums_save[i] = new double *[2];
+        for (int s = 0; s < 2; s++){
+            sums_save[i][s] = new double[2];
         }
     }
 
-    pi = new double*[K];
-    for (int w = 0; w < K; w++){
-        pi[w] = new double[2];
+    pcav = new double ***[M];
+    cme_sum = new double ***[M];
+    pu_cav = new double **[M];
+    for (long he = 0; he < M; he++){
+        pcav[he] = new double **[K];
+        cme_sum[he] = new double **[K];
+        pu_cav[he] = new double *[K];
+        for (int l = 0; l < K; l++){
+            pcav[he][l] = new double *[2];
+            cme_sum[he][l] = new double *[2];
+            pu_cav[he][l] = new double [2];
+            for (int s = 0; s < 2; s++){
+                pcav[he][l][s] = new double [nch_exc];
+                cme_sum[he][l][s] = new double [nch_exc];
+                for (int ch = 0; ch < nch_exc; ch++){
+                    prod = 1;
+                    for (int j = 0; j < K - 1; j++){
+                        bit = ((ch >> j) & 1);
+                        prod *= (bit + (1 - 2 * bit) * p0);
+                    }
+                    pcav[he][l][s][ch] = prod;
+                } 
+            }
+        }
     }
 }
 
 
 // initializes the auxiliary arrays for the Runge-Kutta integration
-void init_RK_arr(double **&k1, double **&k2, double **&prob_joint_1, long M, 
-                int nch_fn){
-    k1 = new double *[M];
-    k2 = new double *[M];
-    prob_joint_1 = new double *[M];
+void init_RK_arr(double ****&k1c, double ****&k2c, double ****&pcav_1,
+                 double *&k1, double *&k2, double *&pi_1, long N, long M, int K, 
+                 int nch_exc){
+    k1 = new double [N];
+    k2 = new double [N];
+    pi_1 = new double [N];
+    for (long i = 0; i < N; i++){
+        k1[i] = 0;
+        k2[i] = 0;
+        pi_1[i] = 0;
+    }
+
+
+    k1c = new double ***[M];
+    k2c = new double ***[M];
+    pcav_1 = new double ***[M];
     for (long he = 0; he < M; he++){
-        k1[he] = new double [nch_fn];
-        k2[he] = new double [nch_fn];
-        prob_joint_1[he] = new double [nch_fn];
-        for (int ch = 0; ch < nch_fn; ch++){
-            k1[he][ch] = 0;
-            k2[he][ch] = 0;
-            prob_joint_1[he][ch] = 0;
+        k1c[he] = new double **[K];
+        k2c[he] = new double **[K];
+        pcav_1[he] = new double **[K];
+        for (int l = 0; l < K; l++){
+            k1c[he][l] = new double *[2];
+            k2c[he][l] = new double *[2];
+            pcav_1[he][l] = new double *[2];
+            for (int s = 0; s < 2; s++){
+                k1c[he][l][s] = new double[nch_exc];
+                k2c[he][l][s] = new double[nch_exc];
+                pcav_1[he][l][s] = new double[nch_exc];
+                for (int ch = 0; ch < nch_exc; ch++){
+                    k1c[he][l][s][ch] = 0;
+                    k2c[he][l][s][ch] = 0;
+                    pcav_1[he][l][s][ch] = 0;
+                }
+            }
         }
+        
     }
 }
 
@@ -484,32 +543,12 @@ double rate_fms(int E0, int E1, double **rates, double e_av){
 }
 
 
-// it computes the conditional probabilities of having a partially unsatisfied clause, given the 
-// value of one variable in the clause
-void comp_pcond(double **prob_joint, double ***pu_cond, double **pi, Thedge *hedges, long M, int K, 
-                int nch_fn){
-    double pu;
-    int bit;
-    int ch_uns_flip;
+void get_pu_cav(double ****pcav, double ***pu_cav, Thedge *hedges, long M, int K){
     for (long he = 0; he < M; he++){
         for (int w = 0; w < K; w++){
             for (int s = 0; s < 2; s++){
-                pi[w][s] = 0;
+                pu_cav[he][w][s] = pcav[he][w][s][hedges[he].ch_unsat_exc[w]];
             }
-        }
-
-        for (int ch = 0; ch < nch_fn; ch++){
-            for (int w = 0; w < K; w++){
-                bit = ((ch >> w) & 1);
-                pi[w][bit] += prob_joint[he][ch];
-            }
-        }
-
-        for (int w = 0; w < K; w++){
-            bit = ((hedges[he].ch_unsat >> w) & 1); 
-            ch_uns_flip = (hedges[he].ch_unsat ^ (1 << w));
-            pu_cond[he][w][bit] = prob_joint[he][hedges[he].ch_unsat] / pi[w][bit];
-            pu_cond[he][w][1 - bit] = prob_joint[he][ch_uns_flip] / pi[w][1 - bit];
         }
     }
 }
@@ -558,16 +597,17 @@ void recursive_marginal(double *pu, int c, int k, double *fE, double *fEnew){
     }
 }
 
+
 // it does the sum in the derivative of the CDA equations
 // fn_src is the origin factor node where one is computing the derivative
 // part_uns is 1 if the other variables in fn_src are partially
 // unsatisfying their links, and is 0 otherwise. 
 void sum_fms(long node, int fn_src, Tnode *nodes, Thedge *hedges, 
-             double *prob_joint, double ***pu_cond, double **rates, double ***pu_l, 
-             double ***fE, double *fEnew, int nch_fn, 
-             double e_av, double *me_sum_src){
-    
-    get_pu_l(pu_cond, pu_l, fn_src, nodes[node]);
+             double ***pcav, double ***pu_cav, double **rates, 
+             double ***pu_l, double ***fE, double *fEnew, int K, 
+             int nch_fn, double e_av, double ***cme_sum_src){
+
+    get_pu_l(pu_cav, pu_l, fn_src, nodes[node]);
     // remember that when l=1 the unsatisfying assingment is si=-1
     // therefore, count_l1 corresponds to pu_l[0], and count_l0 to pu_l[1]
     for (int s1 = 0; s1 < 2; s1++){
@@ -579,17 +619,17 @@ void sum_fms(long node, int fn_src, Tnode *nodes, Thedge *hedges,
     recursive_marginal(pu_l[0][1], nodes[node].count_l1[fn_src], 0, fE[0][1], fEnew);
     recursive_marginal(pu_l[1][0], nodes[node].count_l0[fn_src], 0, fE[1][0], fEnew);
     recursive_marginal(pu_l[1][1], nodes[node].count_l0[fn_src], 0, fE[1][1], fEnew);
-
+    
     double terms[2][2];
     int E[2];
 
-    long he;
-    int plc_he, ch_flip;
-    bool bit, uns, uns_flip;
+    int he, plc_he, plc_other;
+    bool bit, uns, uns_flip, bit_other;
+    int ch_flip, ch_exc, ch_exc_flip;
 
     for (E[0] = 0; E[0] < nodes[node].count_l1[fn_src] + 1; E[0]++){
         for (E[1] = 0; E[1] < nodes[node].count_l0[fn_src] + 1; E[1]++){
-
+            
             terms[0][0] = rate_fms(E[0], E[1], rates, e_av) * fE[0][0][E[0]] * fE[1][0][E[1]];
             terms[1][0] = rate_fms(E[1], E[0], rates, e_av) * fE[0][1][E[0]] * fE[1][1][E[1]];
 
@@ -601,79 +641,209 @@ void sum_fms(long node, int fn_src, Tnode *nodes, Thedge *hedges,
                             fE[bit][bit][E[bit]] * fE[1 - bit][bit][E[1 - bit]];
             terms[1 - bit][1] = rate_fms(E[1 - bit], E[bit] + 1, rates, e_av) * 
                                 fE[1 - bit][1 - bit][E[1 - bit]] * fE[bit][1 - bit][E[bit]];
-            
+
             for (int ch_src = 0; ch_src < nch_fn; ch_src++){
                 bit = ((ch_src >> plc_he) & 1);
                 ch_flip = (ch_src ^ (1 << plc_he));
                 uns = (ch_src == hedges[he].ch_unsat);
                 uns_flip = (ch_flip == hedges[he].ch_unsat);
-                me_sum_src[ch_src] += -terms[bit][uns || uns_flip] * prob_joint[ch_src] + 
-                                      terms[1 - bit][uns || uns_flip] * prob_joint[ch_flip];
-                // if any of the two, uns and uns_flip, is one, then one has to use the terms
-                // in terms[1]. One of them represents the probability of a jump when ch_src in unsat,
-                // and therefore it goes from E[bit unsat] + 1 ----> E[bit sat]. The other jump makes
-                // E[bit sat] ----> E[bit unsat] + 1
+                for (int j = 0; j < K - 1; j++){
+                    plc_other = (plc_he + j + 1) % K;
+                    bit_other = ((ch_src >> plc_other) & 1); 
+                    ch_exc = hedges[he].ch_exc[plc_other][ch_src];
+                    ch_exc_flip = hedges[he].ch_exc[plc_other][ch_flip];
+                    cme_sum_src[plc_other][bit_other][ch_exc] += 
+                    -terms[bit][uns || uns_flip] * pcav[plc_other][bit_other][ch_exc] + 
+                    terms[1 - bit][uns || uns_flip] * pcav[plc_other][bit_other][ch_exc_flip];
+                }
             }
 
         }
     }
+
 }
 
 
-// it computes all the derivatives of the joint probabilities
-void der_fms(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***pu_cond, 
-             double **rates, double ***pu_l, double ***fE, double *fEnew, 
-             long M, int K, int nch_fn, double e_av, double **me_sum){
-    for (long he = 0; he < M; he++){
-        for (int ch = 0; ch < nch_fn; ch++){
-            me_sum[he][ch] = 0;
+
+// it does the sum in the derivative of the CDA equations
+// fn_src is the origin factor node where one is computing the derivative
+// part_uns is 1 if the other variables in fn_src are partially
+// unsatisfying their links, and is 0 otherwise. 
+void sum_fms(long node, int fn_src, Tnode *nodes, Thedge *hedges, 
+             double ***pcav, double ***pu_cav, double **rates, 
+             double ***pu_l, double ***fE, double *fEnew, int K, 
+             int nch_fn, double e_av, double ***cme_sum_src, double **sums_save){
+    get_pu_l(pu_cav, pu_l, fn_src, nodes[node]);
+    // remember that when l=1 the unsatisfying assingment is si=-1
+    // therefore, count_l1 corresponds to pu_l[0], and count_l0 to pu_l[1]
+    for (int s1 = 0; s1 < 2; s1++){
+        for (int s2 = 0; s2 < 2; s2++){
+            fE[s1][s2][0] = 1;
         }
+    }
+    recursive_marginal(pu_l[0][0], nodes[node].count_l1[fn_src], 0, fE[0][0], fEnew);
+    recursive_marginal(pu_l[0][1], nodes[node].count_l1[fn_src], 0, fE[0][1], fEnew);
+    recursive_marginal(pu_l[1][0], nodes[node].count_l0[fn_src], 0, fE[1][0], fEnew);
+    recursive_marginal(pu_l[1][1], nodes[node].count_l0[fn_src], 0, fE[1][1], fEnew);
+    
+    double terms[2][2];
+    int E[2];
+
+    int he, plc_he, plc_other;
+    bool bit, uns, uns_flip, bit_other;
+    int ch_flip, ch_exc, ch_exc_flip;
+
+    sums_save[0][0] = 0;
+    sums_save[1][0] = 0;
+    sums_save[0][1] = 0;
+    sums_save[1][1] = 0;
+
+    for (E[0] = 0; E[0] < nodes[node].count_l1[fn_src] + 1; E[0]++){
+        for (E[1] = 0; E[1] < nodes[node].count_l0[fn_src] + 1; E[1]++){
+            terms[0][0] = rate_fms(E[0], E[1], rates, e_av) * fE[0][0][E[0]] * fE[1][0][E[1]];
+            terms[1][0] = rate_fms(E[1], E[0], rates, e_av) * fE[0][1][E[0]] * fE[1][1][E[1]];
+
+            sums_save[0][0] += terms[0][0];
+            sums_save[1][0] += terms[1][0];
+
+            he = nodes[node].fn_in[fn_src];
+            plc_he = nodes[node].pos_fn[fn_src];
+            bit = ((hedges[he].ch_unsat >> plc_he) & 1);
+
+            terms[bit][1] = rate_fms(E[bit] + 1, E[1 - bit], rates, e_av) * 
+                            fE[bit][bit][E[bit]] * fE[1 - bit][bit][E[1 - bit]];
+            terms[1 - bit][1] = rate_fms(E[1 - bit], E[bit] + 1, rates, e_av) * 
+                                fE[1 - bit][1 - bit][E[1 - bit]] * fE[bit][1 - bit][E[bit]];
+
+            sums_save[bit][1] += terms[bit][1];
+            sums_save[1 - bit][1] += terms[1 - bit][1];
+
+            for (int ch_src = 0; ch_src < nch_fn; ch_src++){
+                bit = ((ch_src >> plc_he) & 1);
+                ch_flip = (ch_src ^ (1 << plc_he));
+                uns = (ch_src == hedges[he].ch_unsat);
+                uns_flip = (ch_flip == hedges[he].ch_unsat);
+                for (int j = 0; j < K - 1; j++){
+                    plc_other = (plc_he + j + 1) % K;
+                    bit_other = ((ch_src >> plc_other) & 1); 
+                    ch_exc = hedges[he].ch_exc[plc_other][ch_src];
+                    ch_exc_flip = hedges[he].ch_exc[plc_other][ch_flip];
+                    cme_sum_src[plc_other][bit_other][ch_exc] += 
+                    -terms[bit][uns || uns_flip] * pcav[plc_other][bit_other][ch_exc] + 
+                    terms[1 - bit][uns || uns_flip] * pcav[plc_other][bit_other][ch_exc_flip];
+                }
+            }
+
+        }
+    }
+
+}
+
+
+// it takes the derivative for a single node with the auxiliary sums already computed
+double der_single_node(double pi, double **sums_save, double *pu_cav, bool bit_uns){
+    double der = 0;
+    bool uns, uns_flip;
+    for (int part_uns = 0; part_uns < 2; part_uns++){
+        der += -sums_save[0][part_uns] * (1 - part_uns - (1 - 2 * part_uns) * pu_cav[0]) * pi + 
+               sums_save[1][part_uns] * (1 - part_uns - (1 - 2 * part_uns) * pu_cav[1]) * (1 - pi);
+    }
+    return der;
+}
+
+
+
+// it computes all the derivatives of the joint probabilities
+void der_fms(Tnode *nodes, Thedge *hedges, double ****pcav, double ***pu_cav, double *pi, 
+             double **rates, double ***pu_l, double ***fE, double *fEnew, long N, long M, 
+             int K, int nch_fn, double e_av, double ****cme_sum, double *me_sum, int max_c, 
+             double ***sums_save){
+    for (long he = 0; he < M; he++){
+        for (int w = 0; w < K; w++){
+            for (int s = 0; s < 2; s++){
+                for (int ch = 0; ch < nch_fn / 2; ch++){
+                    cme_sum[he][w][s][ch] = 0;
+                }
+            }
+        }     
     }
 
     // candidate to be a parallel for
     #pragma omp parallel for
     for (long he = 0; he < M; he++){
         for (int w = 0; w < K; w++){
-            sum_fms(hedges[he].nodes_in[w], hedges[he].pos_n[w], nodes, hedges, 
-                    prob_joint[he], pu_cond, rates, pu_l, fE, fEnew, nch_fn, e_av, 
-                    me_sum[he]);
+            if (hedges[he].pos_n[w] == 0){
+                sum_fms(hedges[he].nodes_in[w], hedges[he].pos_n[w], nodes, hedges, 
+                        pcav[he], pu_cav, rates, pu_l, fE, fEnew, K, nch_fn,
+                        e_av, cme_sum[he], sums_save[hedges[he].nodes_in[w]]);
+            }else{
+                sum_fms(hedges[he].nodes_in[w], hedges[he].pos_n[w], nodes, hedges, 
+                        pcav[he], pu_cav, rates, pu_l, fE, fEnew, K, nch_fn,
+                        e_av, cme_sum[he]);
+            }
+            
         }
     }
+
+    bool bit;
+    for (long i = 0; i < N; i++){
+        if (nodes[i].nfacn > 0){
+            bit = ((hedges[nodes[i].fn_in[0]].ch_unsat >> nodes[i].pos_fn[0]) & 1);  
+            me_sum[i] = der_single_node(pi[i], sums_save[i], 
+                                        pu_cav[nodes[i].fn_in[0]][nodes[i].pos_fn[0]], 
+                                        bit);
+        }
+    }
+
 }
 
 
-double energy(double **prob_joint, Thedge *hedges, long M){
+double energy(double ***pu_cav, double *pi, Thedge *hedges, long M){
     double e = 0;
+    bool bit;
     for (long he = 0; he < M; he++){
-        e += prob_joint[he][hedges[he].ch_unsat];
+        bit = (hedges[he].ch_unsat & 1);
+        e += pu_cav[he][0][bit] * (bit + (1 - 2 * bit) * pi[hedges[he].nodes_in[0]]);
     }
     return e;
 }
 
 
+double norm(double *probs, int nelems){
+    double n = 0;
+    for (int i = 0; i < nelems; i++){
+        n += probs[i];
+    }
+    return n;
+}
+
+
 // peforms the integration of the differential equations with the 2nd order Runge-Kutta
 // the method is implemented with adaptive step size
-void RK2_fms(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, double eta, int max_c, 
-                 double p0, char *fileener, double tl, double tol = 1e-2, double t0 = 0, double dt0 = 0.01, 
-                 double ef = 1e-6, double dt_min = 1e-7){
+void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, double eta, 
+                 int max_c, double p0, char *fileener, double tl, double tol = 1e-2, 
+                 double t0 = 0, double dt0 = 0.01, double ef = 1e-6, double dt_min = 1e-7){
     double **rates, ***pu_l, ***fE, *fEnew;
-    double **prob_joint, ***pu_cond, **me_sum, **pi;
+    double ****pcav, ***pu_cav, ****cme_sum, *pi, *me_sum, ***sums_save;
     double e, pu_av, error;                 
                  
     // initalize all arrays that will be used inside the derivative
     init_aux_arr(rates, pu_l, fE, fEnew, max_c);
-    
+
     table_all_rates(max_c, K, eta, rates);
-    
-    init_probs(prob_joint, pu_cond, pi, me_sum, M, K, nch_fn, p0);
+
+    init_probs(pcav, pu_cav, pi, cme_sum, me_sum, sums_save, N, M, K, nch_fn / 2, p0);
+
+
 
     // initialize auxiliary arrays for the Runge-Kutta integration
-    double **k1, **k2, **prob_joint_1;
-    init_RK_arr(k1, k2, prob_joint_1, M, nch_fn);
+    double ****k1c, ****k2c, ****pcav_1, *k1, *k2, *pi_1;
+    init_RK_arr(k1c, k2c, pcav_1, k1, k2, pi_1, N, M, K, nch_fn / 2);
 
     ofstream fe(fileener);
     
-    e = energy(prob_joint, hedges, M);
+    get_pu_cav(pcav, pu_cav, hedges, M, K);
+    e = energy(pu_cav, pi, hedges, M);
     pu_av = e / M;
     fe << t0 << "\t" << e / N << endl;   // it prints the energy density
 
@@ -692,24 +862,36 @@ void RK2_fms(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, do
 
         auto t1 = std::chrono::high_resolution_clock::now();
 
-        comp_pcond(prob_joint, pu_cond, pi, hedges, M, K, nch_fn);
-
-        der_fms(nodes, hedges, prob_joint, pu_cond, rates, pu_l, fE, fEnew, 
-                M, K, nch_fn, e / N, me_sum);   // in the rates, I use the energy density
+        der_fms(nodes, hedges, pcav, pu_cav, pi, rates, pu_l, fE, fEnew, N, M, K, nch_fn, 
+                e / N, cme_sum, me_sum, max_c, sums_save);   // in the rates, I use the energy density
 
         valid = true;
         for (long he = 0; he < M; he++){
-            for (int ch = 0; ch < nch_fn; ch++){
-                k1[he][ch] = dt1 * me_sum[he][ch];
-                prob_joint_1[he][ch] = prob_joint[he][ch] + k1[he][ch];
-                if (prob_joint_1[he][ch] < 0){
+            for (int w = 0; w < K; w++){
+                for (int s = 0; s < 2; s++){
+                    for (int ch = 0; ch < nch_fn / 2; ch++){
+                        k1c[he][w][s][ch] = dt1 * cme_sum[he][w][s][ch];
+                        pcav_1[he][w][s][ch] = pcav[he][w][s][ch] + k1c[he][w][s][ch];
+                        if (pcav_1[he][w][s][ch] < 0){
+                            valid = false;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (valid){
+            for (long i = 0; i < N; i++){
+                k1[i] = dt1 * me_sum[i];
+                pi_1[i] = pi[i] + k1[i];
+                if (pi_1[i] < 0){
                     valid = false;
                 }
             }
         }
 
         while (!valid){
-            cout << "joint probabilities became negative in the auxiliary step of RK2" << endl;
+            cout << "some probabilities became negative in the auxiliary step of RK2" << endl;
             dt1 /= 2;
             cout << "step divided by half    dt=" << dt1 << endl;
             if (dt1 < dt_min){
@@ -719,28 +901,55 @@ void RK2_fms(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, do
 
             valid = true;
             for (long he = 0; he < M; he++){
-                for (int ch = 0; ch < nch_fn; ch++){
-                    k1[he][ch] = dt1 * me_sum[he][ch];
-                    prob_joint_1[he][ch] = prob_joint[he][ch] + k1[he][ch];
-                    if (prob_joint_1[he][ch] < 0){
+                for (int w = 0; w < K; w++){
+                    for (int s = 0; s < 2; s++){
+                        for (int ch = 0; ch < nch_fn / 2; ch++){
+                            k1c[he][w][s][ch] = dt1 * cme_sum[he][w][s][ch];
+                            pcav_1[he][w][s][ch] = pcav[he][w][s][ch] + k1c[he][w][s][ch];
+                            if (pcav_1[he][w][s][ch] < 0){
+                                valid = false;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (valid){
+                for (long i = 0; i < N; i++){
+                    k1[i] = dt1 * me_sum[i];
+                    pi_1[i] = pi[i] + k1[i];
+                    if (pi_1[i] < 0){
                         valid = false;
                     }
                 }
             }
         }
-        
-        e = energy(prob_joint_1, hedges, M);
-        pu_av = e / M;
-        comp_pcond(prob_joint_1, pu_cond, pi, hedges, M, K, nch_fn);
 
-        der_fms(nodes, hedges, prob_joint_1, pu_cond, rates, pu_l, fE, fEnew, 
-                M, K, nch_fn, e / N, me_sum);
-            
+        get_pu_cav(pcav_1, pu_cav, hedges, M, K);
+        e = energy(pu_cav, pi_1, hedges, M);
+        pu_av = e / M;
+
+        der_fms(nodes, hedges, pcav_1, pu_cav, pi_1, rates, pu_l, fE, fEnew, N, M, K, nch_fn, 
+                e / N, cme_sum, me_sum, max_c, sums_save);
+
         valid = true;
         for (long he = 0; he < M; he++){
-            for (int ch = 0; ch < nch_fn; ch++){
-                k2[he][ch] = dt1 * me_sum[he][ch];
-                if (prob_joint[he][ch] + (k1[he][ch] + k2[he][ch]) / 2 < 0){
+            for (int w = 0; w < K; w++){
+                for (int s = 0; s < 2; s++){
+                    for (int ch = 0; ch < nch_fn / 2; ch++){
+                        k2c[he][w][s][ch] = dt1 * cme_sum[he][w][s][ch];
+                        if (pcav[he][w][s][ch] + (k1c[he][w][s][ch] + k2c[he][w][s][ch]) / 2 < 0){
+                            valid = false;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (valid){
+            for (long i = 0; i < N; i++){
+                k2[i] = dt1 * me_sum[i];
+                if (pi[i] + (k1[i] + k2[i]) / 2 < 0){
                     valid = false;
                 }
             }
@@ -754,33 +963,55 @@ void RK2_fms(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, do
                 dt_min /= 2;
                 cout << "dt_min also halfed" << endl;
             }
-            e = energy(prob_joint, hedges, M);
+            get_pu_cav(pcav, pu_cav, hedges, M, K);
+            e = energy(pu_cav, pi, hedges, M);
             pu_av = e / M;
         }else{
             error = 0;
             for (long he = 0; he < M; he++){
-                for (int ch = 0; ch < nch_fn; ch++){
-                    error += fabs(k1[he][ch] - k2[he][ch]);
+                for (int w = 0; w < K; w++){
+                    for (int s = 0; s < 2; s++){
+                        for (int ch = 0; ch < nch_fn / 2; ch++){
+                            error += fabs(k2c[he][w][s][ch] - k1c[he][w][s][ch]);
+                        }
+                    }
                 }
             }
 
-            error /= nch_fn * M;
+            for (long i = 0; i < N; i++){
+                error += fabs(k2[i] - k1[i]);
+            }
+
+            error /= (N + M * K * nch_fn);
 
             if (error < 2 * tol){
                 cout << "step dt=" << dt1 << "  accepted" << endl;
                 cout << "error=" << error << endl;
                 t += dt1;
+
                 for (long he = 0; he < M; he++){
-                    for (int ch = 0; ch < nch_fn; ch++){
-                        prob_joint[he][ch] += (k1[he][ch] + k2[he][ch]) / 2;
+                    for (int w = 0; w < K; w++){
+                        for (int s = 0; s < 2; s++){
+                            for (int ch = 0; ch < nch_fn / 2; ch++){
+                                pcav[he][w][s][ch] += (k1c[he][w][s][ch] + k2c[he][w][s][ch]) / 2;
+                            }
+                        }
                     }
                 }
-                e = energy(prob_joint, hedges, M);
+
+                for (long i = 0; i < N; i++){
+                    pi[i] += (k1[i] + k2[i]) / 2;
+                }
+
+
+                get_pu_cav(pcav, pu_cav, hedges, M, K);
+                e = energy(pu_cav, pi, hedges, M);
                 pu_av = e / M;
                 fe << t << "\t" << e / N << endl;
 
             }else{
-                e = energy(prob_joint, hedges, M);
+                get_pu_cav(pcav, pu_cav, hedges, M, K);
+                e = energy(pu_cav, pi, hedges, M);
                 pu_av = e / M;
                 cout << "step dt=" << dt1 << "  rejected  new step will be attempted" << endl;
                 cout << "error=" <<  error << endl;
@@ -837,17 +1068,17 @@ int main(int argc, char *argv[]) {
     //                    K, N, M);
 
     char fileener[300]; 
-    sprintf(fileener, "CDA_FMS_ener_K_%d_N_%li_M_%li_eta_%.4lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
+    sprintf(fileener, "CME_WalkSAT_ener_K_%d_N_%li_M_%li_eta_%.4lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
             K, N, M, eta, tl, seed_r, tol);
 
     create_graph(N, M, K, nodes, hedges, r);
     // read_graph_old_order(filegraph, N, M, K, nodes, hedges);
     // read_links(filelinks, N, M, K, nodes, hedges);
     int max_c = get_max_c(nodes, N);
-    get_info_exc(nodes, hedges, N, M, K);
+    get_info_exc(nodes, hedges, N, M, K, nch_fn);
 
     
-    RK2_fms(nodes, hedges, N, M, K, nch_fn, eta, max_c, p0, fileener, tl, tol);
+    RK2_walksat(nodes, hedges, N, M, K, nch_fn, eta, max_c, p0, fileener, tl, tol);
 
     return 0;
 }
