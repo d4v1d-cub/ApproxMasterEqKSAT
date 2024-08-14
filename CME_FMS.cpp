@@ -406,32 +406,6 @@ int get_max_c(Tnode *nodes, long N){
 }
 
 
-void init_aux_arr(double **&rates, double ***&pu_l, double ***&fE,
-                  double *&fEnew, int max_c){
-    rates = new double *[max_c + 1];
-    fEnew = new double [max_c];
-    for (int i = 0; i < max_c + 1; i++){
-        rates[i] = new double [max_c + 1];
-    }
-
-    pu_l = new double **[2];  // the first index is used to distinguish the factor nodes
-    // that are unsatisfied when the spin is 1 or when the spin is -1. This means that pu_l[0]
-    // contains the probabilities of the factor nodes where the spin enters with link li=-1.
-    // Those are unsatisfied when the spin si=1. Analogously, pu_l[1] corresponds to li=1 and 
-    // factor nodes unsatisfied by si=-1. 
-    fE = new double **[2];
-    for (int s = 0; s < 2; s++){
-        fE[s] = new double *[2];
-        pu_l[s] = new double *[2];
-        // the second index goes for the spin in the conditional of the probabilities.
-        for (int si = 0; si < 2; si++){
-            pu_l[s][si] = new double [max_c];
-            fE[s][si] = new double [max_c];
-        }
-    }
-}
-
-
 // initializes all the joint and conditional probabilities
 void init_probs(double ****&pcav, double ***&pu_cav, double *&pi, double ****&cme_sum, 
                 double *&me_sum, double ***&sums_save, long N, long M, int K, int nch_exc, 
@@ -529,8 +503,10 @@ double rate_fms(int E0, int E1, int K, double eta){
 }
 
 
-void table_all_rates(int max_c, int K, double eta, double **rates){
+void table_all_rates(int max_c, int K, double eta, double **&rates){
+    rates = new double *[max_c + 1];
     for (int E0 = 0; E0 < max_c + 1; E0++){
+        rates[E0] = new double [max_c + 1];
         for (int E1 = 0; E1 < max_c + 1; E1++){
             rates[E0][E1] = rate_fms(E0, E1, K, eta);
         }
@@ -598,14 +574,53 @@ void recursive_marginal(double *pu, int c, int k, double *fE, double *fEnew){
 }
 
 
+void init_aux_arr(double ***&pu_l, double ***&fE, double *&fEnew, int c){
+    fEnew = new double [c];
+
+    pu_l = new double **[2];  // the first index is used to distinguish the factor nodes
+    // that are unsatisfied when the spin is 1 or when the spin is -1. This means that pu_l[0]
+    // contains the probabilities of the factor nodes where the spin enters with link li=-1.
+    // Those are unsatisfied when the spin si=1. Analogously, pu_l[1] corresponds to li=1 and 
+    // factor nodes unsatisfied by si=-1. 
+    fE = new double **[2];
+    for (int s = 0; s < 2; s++){
+        fE[s] = new double *[2];
+        pu_l[s] = new double *[2];
+        // the second index goes for the spin in the conditional of the probabilities.
+        for (int si = 0; si < 2; si++){
+            pu_l[s][si] = new double [c];
+            fE[s][si] = new double [c];
+        }
+    }
+}
+
+
+
+void delete_aux_arr(double ***&pu_l, double ***&fE, double *&fEnew){
+    delete [] fEnew;
+    for (int s = 0; s < 2; s++){
+        for (int si = 0; si < 2; si++){
+            delete [] pu_l[s][si];
+            delete [] fE[s][si];
+        }
+        delete [] fE[s];
+        delete [] pu_l[s];
+    }
+    delete [] pu_l;
+    delete [] fE;
+}
+
+
 // it does the sum in the derivative of the CDA equations
 // fn_src is the origin factor node where one is computing the derivative
 // part_uns is 1 if the other variables in fn_src are partially
 // unsatisfying their links, and is 0 otherwise. 
 void sum_fms(long node, int fn_src, Tnode *nodes, Thedge *hedges, 
              double ***pcav, double ***pu_cav, double **rates, 
-             double ***pu_l, double ***fE, double *fEnew, int K, 
-             int nch_fn, double e_av, double ***cme_sum_src){
+             int K, int nch_fn, double e_av, double ***cme_sum_src){
+
+    double ***pu_l, ***fE, *fEnew;
+    init_aux_arr(pu_l, fE, fEnew, nodes[node].nfacn);
 
     get_pu_l(pu_cav, pu_l, fn_src, nodes[node]);
     // remember that when l=1 the unsatisfying assingment is si=-1
@@ -661,6 +676,7 @@ void sum_fms(long node, int fn_src, Tnode *nodes, Thedge *hedges,
         }
     }
 
+    delete_aux_arr(pu_l, fE, fEnew);
 }
 
 
@@ -671,8 +687,11 @@ void sum_fms(long node, int fn_src, Tnode *nodes, Thedge *hedges,
 // unsatisfying their links, and is 0 otherwise. 
 void sum_fms(long node, int fn_src, Tnode *nodes, Thedge *hedges, 
              double ***pcav, double ***pu_cav, double **rates, 
-             double ***pu_l, double ***fE, double *fEnew, int K, 
-             int nch_fn, double e_av, double ***cme_sum_src, double **sums_save){
+             int K, int nch_fn, double e_av, double ***cme_sum_src, double **sums_save){
+
+    double ***pu_l, ***fE, *fEnew;
+    init_aux_arr(pu_l, fE, fEnew, nodes[node].nfacn);
+
     get_pu_l(pu_cav, pu_l, fn_src, nodes[node]);
     // remember that when l=1 the unsatisfying assingment is si=-1
     // therefore, count_l1 corresponds to pu_l[0], and count_l0 to pu_l[1]
@@ -737,6 +756,7 @@ void sum_fms(long node, int fn_src, Tnode *nodes, Thedge *hedges,
         }
     }
 
+    delete_aux_arr(pu_l, fE, fEnew);
 }
 
 
@@ -755,9 +775,8 @@ double der_single_node(double pi, double **sums_save, double *pu_cav, bool bit_u
 
 // it computes all the derivatives of the joint probabilities
 void der_fms(Tnode *nodes, Thedge *hedges, double ****pcav, double ***pu_cav, double *pi, 
-             double **rates, double ***pu_l, double ***fE, double *fEnew, long N, long M, 
-             int K, int nch_fn, double e_av, double ****cme_sum, double *me_sum, int max_c, 
-             double ***sums_save){
+             double **rates, long N, long M, int K, int nch_fn, double e_av, double ****cme_sum, 
+             double *me_sum, double ***sums_save){
     for (long he = 0; he < M; he++){
         for (int w = 0; w < K; w++){
             for (int s = 0; s < 2; s++){
@@ -773,13 +792,12 @@ void der_fms(Tnode *nodes, Thedge *hedges, double ****pcav, double ***pu_cav, do
     for (long he = 0; he < M; he++){
         for (int w = 0; w < K; w++){
             if (hedges[he].pos_n[w] == 0){
-                sum_fms(hedges[he].nodes_in[w], hedges[he].pos_n[w], nodes, hedges, 
-                        pcav[he], pu_cav, rates, pu_l, fE, fEnew, K, nch_fn,
-                        e_av, cme_sum[he], sums_save[hedges[he].nodes_in[w]]);
+                sum_fms(hedges[he].nodes_in[w], hedges[he].pos_n[w], nodes, hedges, pcav[he], 
+                        pu_cav, rates, K, nch_fn, e_av, cme_sum[he], 
+                        sums_save[hedges[he].nodes_in[w]]);
             }else{
-                sum_fms(hedges[he].nodes_in[w], hedges[he].pos_n[w], nodes, hedges, 
-                        pcav[he], pu_cav, rates, pu_l, fE, fEnew, K, nch_fn,
-                        e_av, cme_sum[he]);
+                sum_fms(hedges[he].nodes_in[w], hedges[he].pos_n[w], nodes, hedges, pcav[he], 
+                        pu_cav, rates, K, nch_fn, e_av, cme_sum[he]);
             }
             
         }
@@ -823,12 +841,9 @@ double norm(double *probs, int nelems){
 void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, double eta, 
                  int max_c, double p0, char *fileener, double tl, double tol = 1e-2, 
                  double t0 = 0, double dt0 = 0.01, double ef = 1e-6, double dt_min = 1e-7){
-    double **rates, ***pu_l, ***fE, *fEnew;
+    double **rates;
     double ****pcav, ***pu_cav, ****cme_sum, *pi, *me_sum, ***sums_save;
     double e, pu_av, error;                 
-                 
-    // initalize all arrays that will be used inside the derivative
-    init_aux_arr(rates, pu_l, fE, fEnew, max_c);
 
     table_all_rates(max_c, K, eta, rates);
 
@@ -862,8 +877,8 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
 
         auto t1 = std::chrono::high_resolution_clock::now();
 
-        der_fms(nodes, hedges, pcav, pu_cav, pi, rates, pu_l, fE, fEnew, N, M, K, nch_fn, 
-                e / N, cme_sum, me_sum, max_c, sums_save);   // in the rates, I use the energy density
+        der_fms(nodes, hedges, pcav, pu_cav, pi, rates, N, M, K, nch_fn, e / N, cme_sum, 
+                me_sum, sums_save);   // in the rates, I use the energy density
 
         valid = true;
         for (long he = 0; he < M; he++){
@@ -929,8 +944,8 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
         e = energy(pu_cav, pi_1, hedges, M);
         pu_av = e / M;
 
-        der_fms(nodes, hedges, pcav_1, pu_cav, pi_1, rates, pu_l, fE, fEnew, N, M, K, nch_fn, 
-                e / N, cme_sum, me_sum, max_c, sums_save);
+        der_fms(nodes, hedges, pcav_1, pu_cav, pi_1, rates, N, M, K, nch_fn, e / N, cme_sum, 
+                me_sum, sums_save);
 
         valid = true;
         for (long he = 0; he < M; he++){
