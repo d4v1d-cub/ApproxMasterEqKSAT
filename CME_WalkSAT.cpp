@@ -117,7 +117,7 @@ void read_graph(char *filegraph, long N, long M, int K,
 
     for (long i = 0; i < N; i++){
         if (nodes[i].nfacn != nodes[i].fn_in.size()){
-            cout << "Problem with node " << i << endl;
+            //  cout << "Problem with node " << i << endl;
         }
     }
 
@@ -219,7 +219,7 @@ void read_graph_old_order(char *filegraph, long N, long M, int K,
 
     for (long i = 0; i < N; i++){
         if (nodes[i].nfacn != nodes[i].fn_in.size()){
-            cout << "Problem with node " << i << endl;
+            //  cout << "Problem with node " << i << endl;
         }
     }
 
@@ -916,7 +916,7 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
     // the energy density e_av
     while (t < tl){
         if (e / N < ef){
-            cout << "Final energy reached" << endl;
+            //  cout << "Final energy reached" << endl;
             break;
         }
 
@@ -953,12 +953,12 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
         }
 
         while (!valid){
-            cout << "some probabilities became negative in the auxiliary step of RK2" << endl;
+            //  cout << "some probabilities became negative in the auxiliary step of RK2" << endl;
             dt1 /= 2;
-            cout << "step divided by half    dt=" << dt1 << endl;
+            //  cout << "step divided by half    dt=" << dt1 << endl;
             if (dt1 < dt_min){
                 dt_min /= 2;
-                cout << "dt_min also halfed" << endl;
+                //  cout << "dt_min also halfed" << endl;
             }
 
             valid = true;
@@ -1019,12 +1019,12 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
         }
 
         if (!valid){
-            cout << "Some probabilities would be negative if dt=" << dt1 << " is taken" << endl;
+            //  cout << "Some probabilities would be negative if dt=" << dt1 << " is taken" << endl;
             dt1 /= 2;
-            cout << "step divided by half    dt=" << dt1  << endl;
+            //  cout << "step divided by half    dt=" << dt1  << endl;
             if (dt1 < dt_min){
                 dt_min /= 2;
-                cout << "dt_min also halfed" << endl;
+                //  cout << "dt_min also halfed" << endl;
             }
             get_pu_cav(pcav, pu_cav, hedges, M, K);
             e = energy(pu_cav, pi, hedges, M);
@@ -1048,8 +1048,8 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
             error /= (N + M * K * nch_fn);
 
             if (error < 2 * tol){
-                cout << "step dt=" << dt1 << "  accepted" << endl;
-                cout << "error=" << error << endl;
+                //  cout << "step dt=" << dt1 << "  accepted" << endl;
+                //  cout << "error=" << error << endl;
                 t += dt1;
 
                 for (long he = 0; he < M; he++){
@@ -1076,8 +1076,8 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
                 get_pu_cav(pcav, pu_cav, hedges, M, K);
                 e = energy(pu_cav, pi, hedges, M);
                 pu_av = e / M;
-                cout << "step dt=" << dt1 << "  rejected  new step will be attempted" << endl;
-                cout << "error=" <<  error << endl;
+                //  cout << "step dt=" << dt1 << "  rejected  new step will be attempted" << endl;
+                //  cout << "error=" <<  error << endl;
             }
 
             dt1 = 4 * dt1 * sqrt(2 * tol / error) / 5;
@@ -1087,14 +1087,14 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
                     dt1 = dt_min;
             }
 
-            cout << "Recommended step is dt=" << dt1 << endl;
+            //  cout << "Recommended step is dt=" << dt1 << endl;
         }
 
         auto t2 = std::chrono::high_resolution_clock::now();
 
         auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
 
-        cout << endl << "iteration time:   " << ms_int.count() << "ms" << endl; 
+        //  cout << endl << "iteration time:   " << ms_int.count() << "ms" << endl; 
     }
 
     fe.close();
