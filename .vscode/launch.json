@@ -135,7 +135,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${fileDirname}/Debug/CDA_WalkSAT_av_rates.out",
-            "args": ["10000", "25500", "3", "1", "1.0", "10.0", "1e-3", "3"],
+            "args": ["1000", "2650", "3", "1", "0.5", "10.0", "1e-3", "3"],
             "stopAtEntry": false,
             "cwd": "${fileDirname}/Debug",
             "environment": [],
