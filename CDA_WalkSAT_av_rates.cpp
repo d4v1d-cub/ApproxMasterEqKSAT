@@ -445,7 +445,7 @@ void init_aux_arr(double *&poisson_probs, double *&poisson_sums, int max_c){
 // it computes the binomial weights
 void get_all_poisson_sums(int max_c, double pu_av, double *poisson_probs, 
                           double *poisson_sums, double mean_c){
-    for (int sj = 0; sj < max_c + 1; sj++){
+    for (int sj = 0; sj < max_c; sj++){
         poisson_probs[sj] = gsl_ran_poisson_pdf(sj, (1 - pu_av) * mean_c);
     }
     
@@ -475,23 +475,27 @@ void fill_pneigh(int S, double *poisson_probs, double *poisson_sums,
 double rate_walksat(int E0, int S, int K, double q, double e_av, 
                     double *poisson_probs, double *poisson_sums, 
                     double *pneigh, int nch_exc){
-    bool cond;
-    double cumul, prod;
-    int cumul_bits, bit, k;
-    cumul = 0;
+    if (E0 > 0){
+        bool cond;
+        double cumul, prod;
+        int cumul_bits, bit, k;
+        cumul = 0;
     
-    fill_pneigh(S, poisson_probs, poisson_sums, pneigh);
-    for (int ch = 0; ch < nch_exc; ch++){
-        prod = 1;
-        cumul_bits = 0;
-        for (int w = 0; w < K - 1; w++){
-            bit = ((ch >> w) & 1);
-            prod *= pneigh[bit];  
-            cumul_bits += 1 - bit;
+        fill_pneigh(S, poisson_probs, poisson_sums, pneigh);
+        for (int ch = 0; ch < nch_exc; ch++){
+            prod = 1;
+            cumul_bits = 0;
+            for (int w = 0; w < K - 1; w++){
+                bit = ((ch >> w) & 1);
+                prod *= pneigh[bit];  
+                cumul_bits += 1 - bit;
+            }
+            cumul += prod / (cumul_bits + 1);
         }
-        cumul += prod / (cumul_bits + 1);
+        return E0 * (q / K + (1 - q) * cumul) / e_av; 
+    }else{
+        return 0;
     }
-    return E0 * (q / K + (1 - q) * cumul) / e_av; 
 }
 
 
@@ -860,7 +864,7 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
 
         auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
 
-        //  cout << endl << "iteration time:   " << ms_int.count() << "ms" << endl; 
+        cout << endl << "iteration time:   " << ms_int.count() << "ms" << endl; 
     }
 
     fe.close();
