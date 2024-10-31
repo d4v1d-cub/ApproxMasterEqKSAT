@@ -155,6 +155,32 @@
             ],
             "preLaunchTask": "C/C++: g++-11 CDA WalkSAT av rates",
             "miDebuggerPath": "/usr/bin/gdb"
+        },
+        {
+            "name": "C/C++: g++-11 CME WalkSAT av rates",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${fileDirname}/Debug/CME_WalkSAT_av_rates.out",
+            "args": ["10000", "25500", "3", "1", "1.0", "10.0", "1e-3", "3"],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}/Debug",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "C/C++: g++-11 CME WalkSAT av rates",
+            "miDebuggerPath": "/usr/bin/gdb"
         }
     ],
     "version": "2.0.0"
