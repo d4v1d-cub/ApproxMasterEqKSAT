@@ -864,7 +864,7 @@ void RK2_walksat(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn
 
         auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
 
-        cout << "iteration time:   " << ms_int.count() << "ms" << endl; 
+        // cout << "iteration time:   " << ms_int.count() << "ms" << endl; 
     }
 
     fe.close();
