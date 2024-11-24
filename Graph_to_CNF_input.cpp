@@ -33,8 +33,8 @@ void init_graph(Thedge *&hedges, long M){
 }
 
 
-vector <long> create_graph(long N, long M, int K, Thedge *&hedges, gsl_rng * r){
-    vector <long> discon_before = vector <long> ();
+long create_graph(long N, long M, int K, Thedge *&hedges, gsl_rng * r, long *&disc_before){
+    disc_before = new long [N];
     int *numfn = (int *) calloc(N, sizeof(int));
     init_graph(hedges, M);
     int w, h;
@@ -68,20 +68,20 @@ vector <long> create_graph(long N, long M, int K, Thedge *&hedges, gsl_rng * r){
 
     long counter = 0;
     for (long i = 0; i < N; i++){
-        discon_before.push_back(counter);
+        disc_before[i] = counter;
         if (numfn[i] == 0){
             counter ++;
         }
     }
-    return discon_before;
+    return counter;
 }
 
 
-void PrintToInput(Thedge *hedges, long N, long M, vector <long> discon_before){
-    cout << "p" << "\t" << "cnf" << "\t" << N << "\t" << M << endl;
+void PrintToInput(Thedge *hedges, long N, long M, long *disc_before, long ndisc){
+    cout << "p" << "\t" << "cnf" << "\t" << N - ndisc << "\t" << M << endl;
     for (long he = 0; he < M; he++){
         for (int w = 0; w < hedges[he].nodes_in.size(); w++){
-            cout << (hedges[he].nodes_in[w] - discon_before[hedges[he].nodes_in[w]]) * 
+            cout << (hedges[he].nodes_in[w] - disc_before[hedges[he].nodes_in[w]]) * 
                     hedges[he].links[w] << "\t";
         }
         cout << 0 << endl;
@@ -101,9 +101,10 @@ int main(int argc, char *argv[]) {
     gsl_rng * r;
     init_ran(r, seed);
 
-    vector <long> discon_before = create_graph(N, M, K, hedges, r);
+    long *disc_before;
+    long ndisc = create_graph(N, M, K, hedges, r, disc_before);
 
-    PrintToInput(hedges, N, M, discon_before);
+    PrintToInput(hedges, N, M, disc_before, ndisc);
 
     return 0;
 }
