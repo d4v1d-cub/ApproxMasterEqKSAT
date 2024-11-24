@@ -81,7 +81,7 @@ void PrintToInput(Thedge *hedges, long N, long M, long *disc_before, long ndisc)
     cout << "p" << "\t" << "cnf" << "\t" << N - ndisc << "\t" << M << endl;
     for (long he = 0; he < M; he++){
         for (int w = 0; w < hedges[he].nodes_in.size(); w++){
-            cout << (hedges[he].nodes_in[w] - disc_before[hedges[he].nodes_in[w]]) * 
+            cout << (hedges[he].nodes_in[w] - disc_before[hedges[he].nodes_in[w]] + 1) * 
                     hedges[he].links[w] << "\t";
         }
         cout << 0 << endl;
