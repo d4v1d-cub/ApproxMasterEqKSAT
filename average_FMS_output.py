@@ -1,6 +1,7 @@
 __author__ = 'david'
 
 import numpy as np
+import sys
 
 def average(K, N, eta, alpha, tl, dtN, nsamples):
     av_final = np.zeros(tl * N // dtN + 1)
@@ -68,13 +69,13 @@ def average(K, N, eta, alpha, tl, dtN, nsamples):
 
 
 def main():
-    N = 50000
-    K = 3
-    eta = 100
-    alpha = 269
-    tl = 50
-    dtN = 5000
-    nsamples = 1000
+    N = int(sys.argv[1])
+    K = int(sys.argv[2])
+    eta = sys.argv[3]
+    alpha = sys.argv[4]
+    tl = sys.argv[5]
+    dtN = sys.argv[6]
+    nsamples = sys.argv[7]
 
     average(K, N, eta, alpha, tl, dtN, nsamples)
 
