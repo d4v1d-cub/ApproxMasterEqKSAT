@@ -79,7 +79,7 @@ def main():
     alpha = sys.argv[4]
     tl = int(sys.argv[5])
     dtN = int(sys.argv[6])
-    nsamples = sys.argv[7]
+    nsamples = int(sys.argv[7])
 
     average(K, N, eta, alpha, tl, dtN, nsamples)
 
