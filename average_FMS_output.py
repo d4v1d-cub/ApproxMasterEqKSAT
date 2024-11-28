@@ -34,7 +34,7 @@ def average(K, N, eta, alpha, tl, dtN, nsamples):
             true_nsamples += 1
             final_times.append(t_final)
             final_eners.append(ef)
-        except(OSError, IOError):
+        except(OSError, IOError, IndexError):
             print(fname + "  not read")
             continue
 
