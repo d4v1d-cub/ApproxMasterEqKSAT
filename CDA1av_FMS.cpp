@@ -22,14 +22,14 @@ void init_ran(gsl_rng * &r, unsigned long s){
 
 
 
-int get_max_c(double alpha, int K, double thr){
-    int max_c = 0;
-    double cdf_Q = gsl_cdf_poisson_Q(max_c, alpha * K);
+int get_max_gamma(double alpha, int K, double thr){
+    int max_gamma = 0;
+    double cdf_Q = gsl_cdf_poisson_Q(max_gamma, alpha * K);
     while (cdf_Q > thr){
-        max_c++;
-        cdf_Q = gsl_cdf_poisson_Q(max_c, alpha * K);
+        max_gamma++;
+        cdf_Q = gsl_cdf_poisson_Q(max_gamma, alpha * K);
     }
-    return max_c;
+    return max_gamma;
 }
 
 
@@ -37,8 +37,8 @@ int get_max_c(double alpha, int K, double thr){
 // prob_joint[ch][i], with ch=0,...,2^{K}-1 and i=0,...,2^{K}-1. The index ch is the 
 // unsat combination and i is the combination of the spins
 // pu_cond[ch][j][S], with ch=0,...,2^{K}-1, j=0,...,K-1 and S=0,1
-void init_pop(double **&prob_joint, double ***&pu_cond, double **&pi, double **&me_sum, 
-              int K, int nch_fn, double p0){
+void init_probs(double **&prob_joint, double ***&pu_cond, double **&pi, double **&me_sum, 
+                int K, int nch_fn, double p0){
     double prod;
     int bit;
     prob_joint = new double *[nch_fn];
@@ -99,11 +99,11 @@ double rate_fms(int E0, int E1, int K, double eta){
 }
 
 
-void table_all_rates(int max_c, int K, double eta, double **&rates){
-    rates = new double *[max_c + 1];
-    for (int E0 = 0; E0 < max_c + 1; E0++){
-        rates[E0] = new double [max_c + 1];
-        for (int E1 = 0; E1 < max_c + 1; E1++){
+void table_all_rates(int max_gamma, int K, double eta, double **&rates){
+    rates = new double *[max_gamma + 1];
+    for (int E0 = 0; E0 < max_gamma + 1; E0++){
+        rates[E0] = new double [max_gamma + 1];
+        for (int E1 = 0; E1 < max_gamma + 1; E1++){
             rates[E0][E1] = rate_fms(E0, E1, K, eta);
         }
     }
@@ -149,11 +149,11 @@ void comp_pcond(double **prob_joint, double ***pu_cond, double **pi,
 // it gets the conditional probabilities for the factor nodes unsatisfied by
 // si=1 (pu_l[0]) and the ones unsatisfied by si=-1 (pu_l[1])
 // the second index is the value of the spin in the conditional
-void get_pu_l(double ***pu_cond, double ***pu_l, int K, int c, int nch_fn, gsl_rng * r,
+void get_pu_l(double ***pu_cond, double ***pu_l, int K, int gamma, int nch_fn, gsl_rng * r,
               int &lp, int &ln){
     int ch_u, cond_spin, bit;
     lp = 0, ln = 0;
-    for (int i = 0; i < c; i++){
+    for (int i = 0; i < gamma; i++){
         ch_u = gsl_rng_uniform_int(r, nch_fn);
         cond_spin = gsl_rng_uniform_int(r, K);
         bit = ((ch_u >> cond_spin) & 1);
@@ -192,8 +192,8 @@ void recursive_marginal(double *pu, int c, int k, double *fE, double *fEnew){
 }
 
 
-void init_aux_arr(double ***&pu_l, double ***&fE, double *&fEnew, int c){
-    fEnew = new double [c];
+void init_aux_arr(double ***&pu_l, double ***&fE, double *&fEnew, int gamma){
+    fEnew = new double [gamma + 1];
 
     pu_l = new double **[2];  // the first index is used to distinguish the factor nodes
     // that are unsatisfied when the spin is 1 or when the spin is -1. This means that pu_l[0]
@@ -206,8 +206,8 @@ void init_aux_arr(double ***&pu_l, double ***&fE, double *&fEnew, int c){
         pu_l[s] = new double *[2];
         // the second index goes for the spin in the conditional of the probabilities.
         for (int si = 0; si < 2; si++){
-            pu_l[s][si] = new double [c];
-            fE[s][si] = new double [c];
+            pu_l[s][si] = new double [gamma];
+            fE[s][si] = new double [gamma + 1];
         }
     }
 }
@@ -233,14 +233,14 @@ void delete_aux_arr(double ***&pu_l, double ***&fE, double *&fEnew){
 // fn_src is the origin factor node where one is computing the derivative
 // part_uns is 1 if the other variables in fn_src are partially
 // unsatisfying their links, and is 0 otherwise. 
-void sum_fms(int K, int c, int ch_u, int plc_he, double *prob_joint, double ***pu_cond, 
+void sum_fms(int K, int gamma, int ch_u, int plc_he, double *prob_joint, double ***pu_cond, 
              double **rates, int nch_fn, double e_av, double *me_sum_src, gsl_rng * r){
 
     double ***pu_l, ***fE, *fEnew;
-    init_aux_arr(pu_l, fE, fEnew, c);
+    init_aux_arr(pu_l, fE, fEnew, gamma);
     
     int lp, ln;
-    get_pu_l(pu_cond, pu_l, K, c, nch_fn, r, lp, ln);
+    get_pu_l(pu_cond, pu_l, K, gamma, nch_fn, r, lp, ln);
     // remember that when l=1 the unsatisfying assingment is si=-1
     // therefore, ln corresponds to pu_l[0], and lp to pu_l[1]
     for (int s1 = 0; s1 < 2; s1++){
@@ -257,7 +257,7 @@ void sum_fms(int K, int c, int ch_u, int plc_he, double *prob_joint, double ***p
     int E[2];
 
     long he;
-    int plc_he, ch_flip;
+    int ch_flip;
     bool bit, uns, uns_flip;
 
     for (E[0] = 0; E[0] < ln + 1; E[0]++){
@@ -293,58 +293,114 @@ void sum_fms(int K, int c, int ch_u, int plc_he, double *prob_joint, double ***p
 }
 
 
-// it computes all the derivatives of the joint probabilities
-void der_fms(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***pu_cond, 
-             double **rates, long M, int K, int nch_fn, double e_av, double **me_sum){
-    for (long he = 0; he < M; he++){
+void comp_sums(double alpha, int K, int max_gamma, long nsamples, int ch_u, int plc_he, 
+               double *prob_joint, double ***pu_cond, double **rates, int nch_fn, double e_av, 
+               double *me_sum_src, gsl_rng * r){
+    int gamma;
+    for (long i = 0; i < nsamples; i++){
+        gamma = gsl_ran_poisson(r, alpha * K);
+        if (gamma > max_gamma){
+            gamma = max_gamma;
+        }       
+        sum_fms(K, gamma, ch_u, plc_he, prob_joint, pu_cond, rates, nch_fn, e_av, me_sum_src, r);
+    }
+}
+
+
+void comp_sums(double alpha, int K, int max_gamma, int ch_u, int plc_he, 
+               double *prob_joint, double ***pu_cond, double **rates, int nch_fn, double e_av, 
+               double *me_sum_src, gsl_rng * r){
+    double *me_sum_gamma;
+    me_sum_gamma = new double[nch_fn];
+    for (int gamma = 0; gamma < max_gamma + 1; gamma++){
         for (int ch = 0; ch < nch_fn; ch++){
-            me_sum[he][ch] = 0;
+            me_sum_gamma[ch] = 0;
+        }
+        sum_fms(K, gamma, ch_u, plc_he, prob_joint, pu_cond, rates, nch_fn, e_av, me_sum_gamma, r);
+
+        for (int ch = 0; ch < nch_fn; ch++){
+            me_sum_src[ch] += me_sum_gamma[ch] * gsl_ran_poisson_pdf(gamma, alpha * K);
+        }
+    }
+}
+
+
+// it computes all the derivatives of the joint probabilities
+void der_fms(double **prob_joint, double ***pu_cond, double **rates, long nsamples, 
+             double alpha, int K, int max_gamma, int nch_fn, double e_av, double **me_sum, 
+             gsl_rng * r){
+    for (int ch_u = 0; ch_u < nch_fn; ch_u++){
+        for (int ch = 0; ch < nch_fn; ch++){
+            me_sum[ch_u][ch] = 0;
         }
     }
 
     // candidate to be a parallel for
     #pragma omp parallel for
-    for (long he = 0; he < M; he++){
+    for (int ch_u = 0; ch_u < nch_fn; ch_u++){
         for (int w = 0; w < K; w++){
-            sum_fms(hedges[he].nodes_in[w], hedges[he].pos_n[w], nodes, hedges, 
-                    prob_joint[he], pu_cond, rates, nch_fn, e_av, me_sum[he]);
+            comp_sums(alpha, K, max_gamma, nsamples, ch_u, w, prob_joint[ch_u], pu_cond, 
+                      rates, nch_fn, e_av, me_sum[ch_u], r);
+        }
+        for (int ch = 0; ch < nch_fn; ch++){
+            me_sum[ch_u][ch] /= nsamples;
         }
     }
 }
 
 
-double energy(double **prob_joint, Thedge *hedges, long M){
-    double e = 0;
-    for (long he = 0; he < M; he++){
-        e += prob_joint[he][hedges[he].ch_unsat];
+// it computes all the derivatives of the joint probabilities
+void der_fms(double **prob_joint, double ***pu_cond, double **rates, 
+             double alpha, int K, int max_gamma, int nch_fn, double e_av, double **me_sum, 
+             gsl_rng * r){
+    for (int ch_u = 0; ch_u < nch_fn; ch_u++){
+        for (int ch = 0; ch < nch_fn; ch++){
+            me_sum[ch_u][ch] = 0;
+        }
     }
-    return e;
+
+    // candidate to be a parallel for
+    #pragma omp parallel for
+    for (int ch_u = 0; ch_u < nch_fn; ch_u++){
+        for (int w = 0; w < K; w++){
+            comp_sums(alpha, K, max_gamma, ch_u, w, prob_joint[ch_u], pu_cond, 
+                      rates, nch_fn, e_av, me_sum[ch_u], r);
+        }
+    }
+}
+
+
+double energy(double **prob_joint, int nch_fn){
+    double e = 0;
+    for (int ch_u = 0; ch_u < nch_fn; ch_u++){
+        e += prob_joint[ch_u][ch_u];
+    }
+    return e / nch_fn;
 }
 
 
 // peforms the integration of the differential equations with the 2nd order Runge-Kutta
 // the method is implemented with adaptive step size
-void RK2_fms(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, double eta, int max_c, 
-                 double p0, char *fileener, double tl, double tol = 1e-2, double t0 = 0, double dt0 = 0.01, 
-                 double ef = 1e-6, double dt_min = 1e-7){
+void RK2_fms(double alpha, int K, int nch_fn, double eta, int max_gamma, long nsamples, 
+             double p0, char *fileener, double tl, gsl_rng * r, double tol = 1e-2, double t0 = 0, double dt0 = 0.01, 
+             double ef = 1e-6, double dt_min = 1e-7){
     double **rates;
     double **prob_joint, ***pu_cond, **me_sum, **pi;
-    double e, pu_av, error;                 
+    double e, error;                 
     
     
-    table_all_rates(max_c, K, eta, rates);
+    table_all_rates(max_gamma, K, eta, rates);
     
-    init_probs(prob_joint, pu_cond, pi, me_sum, M, K, nch_fn, p0);
+    init_probs(prob_joint, pu_cond, pi, me_sum, K, nch_fn, p0);
 
     // initialize auxiliary arrays for the Runge-Kutta integration
     double **k1, **k2, **prob_joint_1;
-    init_RK_arr(k1, k2, prob_joint_1, M, nch_fn);
+    init_RK_arr(k1, k2, prob_joint_1, nch_fn);
 
     ofstream fe(fileener);
     
-    e = energy(prob_joint, hedges, M);
-    pu_av = e / M;
-    fe << t0 << "\t" << e / N << endl;   // it prints the energy density
+    e = energy(prob_joint, nch_fn) * alpha;
+    fe << t0 << "\t" << e << endl;   // it prints the energy density
 
     double dt1 = dt0;
     double t = t0;
@@ -354,23 +410,23 @@ void RK2_fms(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, do
     // the time scale is already given in Monte Carlo steps. Inside the rates I am using 
     // the energy density e_av
     while (t < tl){
-        if (e / N < ef){
+        if (e < ef){
             //  cout << "Final energy reached" << endl;
             break;
         }
 
         auto t1 = std::chrono::high_resolution_clock::now();
 
-        comp_pcond(prob_joint, pu_cond, pi, hedges, M, K, nch_fn);
+        comp_pcond(prob_joint, pu_cond, pi, K, nch_fn);
 
-        der_fms(nodes, hedges, prob_joint, pu_cond, rates, M, K, nch_fn, e / N, me_sum);   // in the rates, I use the energy density
+        der_fms(prob_joint, pu_cond, rates, nsamples, alpha, K, max_gamma, nch_fn, e, me_sum, r);   // in the rates, I use the energy density
 
         valid = true;
-        for (long he = 0; he < M; he++){
+        for (int ch_u = 0; ch_u < nch_fn; ch_u++){
             for (int ch = 0; ch < nch_fn; ch++){
-                k1[he][ch] = dt1 * me_sum[he][ch];
-                prob_joint_1[he][ch] = prob_joint[he][ch] + k1[he][ch];
-                if (prob_joint_1[he][ch] < 0){
+                k1[ch_u][ch] = dt1 * me_sum[ch_u][ch];
+                prob_joint_1[ch_u][ch] = prob_joint[ch_u][ch] + k1[ch_u][ch];
+                if (prob_joint_1[ch_u][ch] < 0){
                     valid = false;
                 }
             }
@@ -386,28 +442,27 @@ void RK2_fms(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, do
             }
 
             valid = true;
-            for (long he = 0; he < M; he++){
+            for (int ch_u = 0; ch_u < nch_fn; ch_u++){
                 for (int ch = 0; ch < nch_fn; ch++){
-                    k1[he][ch] = dt1 * me_sum[he][ch];
-                    prob_joint_1[he][ch] = prob_joint[he][ch] + k1[he][ch];
-                    if (prob_joint_1[he][ch] < 0){
+                    k1[ch_u][ch] = dt1 * me_sum[ch_u][ch];
+                    prob_joint_1[ch_u][ch] = prob_joint[ch_u][ch] + k1[ch_u][ch];
+                    if (prob_joint_1[ch_u][ch] < 0){
                         valid = false;
                     }
                 }
             }
         }
         
-        e = energy(prob_joint_1, hedges, M);
-        pu_av = e / M;
-        comp_pcond(prob_joint_1, pu_cond, pi, hedges, M, K, nch_fn);
+        e = energy(prob_joint_1, nch_fn);
+        comp_pcond(prob_joint_1, pu_cond, pi, K, nch_fn);
 
-        der_fms(nodes, hedges, prob_joint_1, pu_cond, rates, M, K, nch_fn, e / N, me_sum);
+        der_fms(prob_joint_1, pu_cond, rates, nsamples, alpha, K, max_gamma, nch_fn, e, me_sum, r);
             
         valid = true;
-        for (long he = 0; he < M; he++){
+        for (int ch_u = 0; ch_u < nch_fn; ch_u++){
             for (int ch = 0; ch < nch_fn; ch++){
-                k2[he][ch] = dt1 * me_sum[he][ch];
-                if (prob_joint[he][ch] + (k1[he][ch] + k2[he][ch]) / 2 < 0){
+                k2[ch_u][ch] = dt1 * me_sum[ch_u][ch];
+                if (prob_joint[ch_u][ch] + (k1[ch_u][ch] + k2[ch_u][ch]) / 2 < 0){
                     valid = false;
                 }
             }
@@ -421,43 +476,38 @@ void RK2_fms(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, do
                 dt_min /= 2;
                 //  cout << "dt_min also halfed" << endl;
             }
-            e = energy(prob_joint, hedges, M);
-            pu_av = e / M;
+            e = energy(prob_joint, nch_fn);
         }else{
             error = 0;
-            for (long he = 0; he < M; he++){
+            for (int ch_u = 0; ch_u < nch_fn; ch_u++){
                 for (int ch = 0; ch < nch_fn; ch++){
-                    error += fabs(k1[he][ch] - k2[he][ch]);
+                    error += fabs(k1[ch_u][ch] - k2[ch_u][ch]);
                 }
             }
 
-            error /= nch_fn * M;
+            error /= nch_fn * nch_fn;
 
             if (error < 2 * tol){
                 //  cout << "step dt=" << dt1 << "  accepted" << endl;
                 //  cout << "error=" << error << endl;
                 t += dt1;
-                for (long he = 0; he < M; he++){
+                for (int ch_u = 0; ch_u < nch_fn; ch_u++){
                     for (int ch = 0; ch < nch_fn; ch++){
-                        prob_joint[he][ch] += (k1[he][ch] + k2[he][ch]) / 2;
+                        prob_joint[ch_u][ch] += (k1[ch_u][ch] + k2[ch_u][ch]) / 2;
                     }
                 }
-                e = energy(prob_joint, hedges, M);
-                pu_av = e / M;
-                fe << t << "\t" << e / N << endl;
+                e = energy(prob_joint, nch_fn);
+                fe << t << "\t" << e << endl;
 
             }else{
-                e = energy(prob_joint, hedges, M);
-                pu_av = e / M;
+                e = energy(prob_joint, nch_fn);
                 //  cout << "step dt=" << dt1 << "  rejected  new step will be attempted" << endl;
                 //  cout << "error=" <<  error << endl;
             }
 
             dt1 = 4 * dt1 * sqrt(2 * tol / error) / 5;
-            if (dt1 > M){
-                    dt1 = M;
-            }else if(dt1 < dt_min){
-                    dt1 = dt_min;
+            if(dt1 < dt_min){
+                dt1 = dt_min;
             }
 
             //  cout << "Recommended step is dt=" << dt1 << endl;
@@ -467,7 +517,7 @@ void RK2_fms(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, do
 
         auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
 
-        //  cout << endl << "iteration time:   " << ms_int.count() << "ms" << endl; 
+        // cout << endl << "iteration time:   " << ms_int.count() << "ms" << endl; 
     }
 
     fe.close();
@@ -476,45 +526,34 @@ void RK2_fms(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, do
 
 
 int main(int argc, char *argv[]) {
-    long N = atol(argv[1]);
-    long M = atol(argv[2]);
+    long nsamples = atol(argv[1]);
+    double alpha = atof(argv[2]);
     int K = atoi(argv[3]);
     unsigned long seed_r = atol(argv[4]);
     double eta = atof(argv[5]);
     double tl = atof(argv[6]);
     double tol = atof(argv[7]);
     int nthr = atoi(argv[8]);
+    double eps_c = atof(argv[9]);
 
     int nch_fn = (1 << K);
     double p0 = 0.5;
 
     omp_set_num_threads(nthr);
 
-    Tnode *nodes;
-    Thedge *hedges;
-
     gsl_rng * r;
     init_ran(r, seed_r);
 
-    // char filegraph[300];
-    // char filelinks[300];
-    // sprintf(filegraph, "KSATgraph_K_%d_N_%li_M_%li_simetric_1_model_1_idum1_-2_J_1_ordered.txt", 
-    //                    K, N, M);
-    // sprintf(filelinks, "KSAT_K_%d_enlaces_N_%li_M_%li_idumenlaces_-2_idumgraph_-2_ordered.txt", 
-    //                    K, N, M);
-
     char fileener[300]; 
-    sprintf(fileener, "CDA_FMS_ener_K_%d_N_%li_M_%li_eta_%.4lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
-            K, N, M, eta, tl, seed_r, tol);
+    sprintf(fileener, "CDA1av_FMS_ener_K_%d_alpha_%.4lf_eta_%.4lf_tl_%.2lf_seed_%li_tol_%.1e_nsamples_%li.txt", 
+            K, alpha, eta, tl, seed_r, tol, nsamples);
+    // sprintf(fileener, "CDA1av_FMS_ener_K_%d_alpha_%.4lf_eta_%.4lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
+            // K, alpha, eta, tl, seed_r, tol);
 
-    create_graph(N, M, K, nodes, hedges, r);
-    // read_graph_old_order(filegraph, N, M, K, nodes, hedges);
-    // read_links(filelinks, N, M, K, nodes, hedges);
-    int max_c = get_max_c(nodes, N);
-    get_info_exc(nodes, hedges, N, M, K);
 
+    int max_gamma = get_max_gamma(alpha, K, eps_c);
     
-    RK2_fms(nodes, hedges, N, M, K, nch_fn, eta, max_c, p0, fileener, tl, tol);
+    RK2_fms(alpha, K, nch_fn, eta, max_gamma, nsamples, p0, fileener, tl, r, tol);
 
     return 0;
 }
