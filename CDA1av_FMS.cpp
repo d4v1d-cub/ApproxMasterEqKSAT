@@ -545,7 +545,7 @@ int main(int argc, char *argv[]) {
     init_ran(r, seed_r);
 
     char fileener[300]; 
-    sprintf(fileener, "CDA1av_FMS_ener_K_%d_alpha_%.4lf_eta_%.4lf_tl_%.2lf_seed_%li_tol_%.1e_nsamples_%li_epsc_%.e.txt", 
+    sprintf(fileener, "CDA1av_FMS_ener_K_%d_alpha_%.4lf_eta_%.4lf_tl_%.2lf_seed_%li_tol_%.1e_nsamples_%li_epsc_%e.txt", 
             K, alpha, eta, tl, seed_r, tol, nsamples, eps_c);
 
 
