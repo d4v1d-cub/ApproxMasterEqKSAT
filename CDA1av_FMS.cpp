@@ -517,7 +517,7 @@ void RK2_fms(double alpha, int K, int nch_fn, double eta, int max_gamma, long ns
 
         auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
 
-        // cout << endl << "iteration time:   " << ms_int.count() << "ms" << endl; 
+        cout << endl << "iteration time:   " << ms_int.count() << "ms" << endl; 
     }
 
     fe.close();
@@ -545,10 +545,8 @@ int main(int argc, char *argv[]) {
     init_ran(r, seed_r);
 
     char fileener[300]; 
-    sprintf(fileener, "CDA1av_FMS_ener_K_%d_alpha_%.4lf_eta_%.4lf_tl_%.2lf_seed_%li_tol_%.1e_nsamples_%li.txt", 
-            K, alpha, eta, tl, seed_r, tol, nsamples);
-    // sprintf(fileener, "CDA1av_FMS_ener_K_%d_alpha_%.4lf_eta_%.4lf_tl_%.2lf_seed_%li_tol_%.1e.txt", 
-            // K, alpha, eta, tl, seed_r, tol);
+    sprintf(fileener, "CDA1av_FMS_ener_K_%d_alpha_%.4lf_eta_%.4lf_tl_%.2lf_seed_%li_tol_%.1e_nsamples_%li_epsc_%.e.txt", 
+            K, alpha, eta, tl, seed_r, tol, nsamples, eps_c);
 
 
     int max_gamma = get_max_gamma(alpha, K, eps_c);
