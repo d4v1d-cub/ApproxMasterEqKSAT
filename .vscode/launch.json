@@ -187,7 +187,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${fileDirname}/Debug/CDA1av_FMS.out",
-            "args": ["1000", "2.1", "3", "1", "1.0", "10.0", "1e-3", "3", "1e-8"],
+            "args": ["1000", "2.0", "3", "1", "1.0", "10.0", "1e-3", "3", "1e-8"],
             "stopAtEntry": false,
             "cwd": "${fileDirname}/Debug",
             "environment": [],
@@ -206,6 +206,32 @@
                 }
             ],
             "preLaunchTask": "C/C++: g++-11 CDA1av FMS",
+            "miDebuggerPath": "/usr/bin/gdb"
+        },
+        {
+            "name": "C/C++: g++-11 CDA1av FMS pop",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${fileDirname}/Debug/CDA1av_FMS_pop.out",
+            "args": ["1000", "5.3", "3", "1", "0.1", "10.0", "1e-3", "3", "1e-8"],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}/Debug",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "C/C++: g++-11 CDA1av FMS pop",
             "miDebuggerPath": "/usr/bin/gdb"
         }
     ],
