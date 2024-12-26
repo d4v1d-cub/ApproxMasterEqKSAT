@@ -31,6 +31,7 @@ end
 function read_graph_from_file()::Hypergraph{Bool,Spin,UInt8}
     N, M = [parse(Int, x) for x in split(readline())]
     println("Reading graph with N=$(N), M=$(M)")
+    flush(stdout)
     h=Hypergraph{Bool,Spin,UInt8}(N,M)
     for he in 1:M
         v = [parse(Int, x) for x in split(readline())]
@@ -179,10 +180,10 @@ end
 
 
 function SingleGraph(h::Hypergraph{Bool,Spin,UInt8}, time::Float64, Hist::Int, q::Float64, 
-                     div::Int64, fname_dyn::String, fname_Psol::String)
+                     div::Int64, fname_dyn::String, fname_Psol::String, save_every::Int64)
     println("Begining runs")
+    N = nhv(h)
     alpha_u=zeros(Float64,round(Int, N*time+1))
-    counter = 0
     sat = 0
     cumul_ener = 0
     cumul_ener_sqr = 0
@@ -194,10 +195,13 @@ function SingleGraph(h::Hypergraph{Bool,Spin,UInt8}, time::Float64, Hist::Int, q
         if unsat_final == 0
             sat += 1
         end
-        counter += 1
+        if hist % save_every == 0
+            Imprime(fname_dyn,alpha_u/hist,N, div)
+            Imprime_sat(fname_Psol, sat, cumul_ener, cumul_ener_sqr, hist, time)
+        end
     end
-    Imprime(fname_dyn,alpha_u/counter,N, div)
-    Imprime_sat(fname_Psol, sat, cumul_ener, cumul_ener_sqr, 1, time)
+    Imprime(fname_dyn,alpha_u/Hist,N, div)
+    Imprime_sat(fname_Psol, sat, cumul_ener, cumul_ener_sqr, Hist, time)
 end
 
 if ARGS[1] == "file"
@@ -205,6 +209,7 @@ if ARGS[1] == "file"
     Hist=parse(Int64, ARGS[3])
     time=parse(Float64, ARGS[4])
     ruta=ARGS[5]
+    save_every=parse(Int64, ARGS[6])
 
     h=read_graph_from_file()
     N = nhv(h)
@@ -217,7 +222,7 @@ if ARGS[1] == "file"
     fname_dyn = ruta*"WalkSAT_dynamics_K_$(K)_N_$(N)_alpha_$(M/N)_q_$(q)_t_$(time)_dtmin_$(dtmin)_nhist_$(Hist).txt"
     fname_Psol = ruta*"WalkSAT_Psol_K_$(K)_N_$(N)_alpha_$(M/N)_q_$(q)_t_$(time)_dtmin_$(dtmin)_nhist_$(Hist).txt"
 
-    SingleGraph(h, time, Hist, q, div, fname_dyn, fname_Psol)
+    SingleGraph(h, time, Hist, q, div, fname_dyn, fname_Psol, save_every)
 
 elseif ARGS[1] == "inside"
 
