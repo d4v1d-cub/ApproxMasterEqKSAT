@@ -240,6 +240,7 @@ BIGINT printtrace = FALSE;
 int trace_assign = FALSE;
 
 char outfile[1024] = { 0 };
+char filehist[1024] = { 0 };
 
 /* Initialization options */
 
@@ -385,7 +386,7 @@ void update_statistics_start_try(void);
 void print_statistics_start_flip(void);
 void update_history(void);
 void init_history(void);
-void print_history(void);
+void print_history(char *filename);
 void update_and_print_statistics_end_try(void);
 void update_statistics_end_flip(void);
 void print_statistics_final(void);
@@ -442,11 +443,11 @@ int main(int argc,char *argv[])
 
     //update_and_print_statistics_end_try();
       if (numtry % print_every == 0){
-        print_history();
+        print_history(filehist);
       }
     }
 
-    print_history();
+    print_history(filehist);
 
     expertime = elapsed_seconds();
     print_statistics_final();
@@ -572,6 +573,8 @@ void parse_parameters(int argc,char *argv[])
         whiteflag = TRUE;
     else if (strcmp(argv[i],"-print_every") == 0)
         scanone(argc,argv,++i,&print_every);
+    else if (strcmp(argv[i],"-fhist") == 0)
+        strcpy(filehist, argv[++i]);
     else 
     {
         fprintf(stderr, "General parameters:\n");
@@ -740,12 +743,15 @@ void update_history(void)
 }
 
 
-void print_history(void)
+void print_history(char * filename)
 {
+  FILE * fhist;
+  fhist = fopen(filename, "w");
   int it;
-  for (it=0; it < cutoff/printtrace; it++){
-    printf("%li\t%lf\n", it * printtrace, (double) history[it] / numtry);
+  for (it=0; it < numflip/printtrace; it++){
+    printf(fhist, "%li\t%lf\n", it * printtrace, (double) history[it] / numtry);
   }
+  fclose(fhist);
 }
 
 
