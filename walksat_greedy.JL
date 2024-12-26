@@ -178,7 +178,7 @@ function Datos(K::Int, N::Int, time::Float64, Exp::Int, Hist::Int, M::Int, q::Fl
 end
 
 
-function SingleGraph(time::Float64, Hist::Int, q::Float64, 
+function SingleGraph(h::Hypergraph{Bool,Spin,UInt8}, time::Float64, Hist::Int, q::Float64, 
                      div::Int64, fname_dyn::String, fname_Psol::String)
     println("Begining runs")
     alpha_u=zeros(Float64,round(Int, N*time+1))
@@ -186,8 +186,6 @@ function SingleGraph(time::Float64, Hist::Int, q::Float64,
     sat = 0
     cumul_ener = 0
     cumul_ener_sqr = 0
-    h=read_graph_from_file()
-    N = nhv(h)
     hist = 0
     for hist in 1:Hist
         unsat_final = Walk!(h,alpha_u,q,hist)
@@ -208,13 +206,18 @@ if ARGS[1] == "file"
     time=parse(Float64, ARGS[4])
     ruta=ARGS[5]
 
+    h=read_graph_from_file()
+    N = nhv(h)
+    M = nhe(h)
+    K = length(h.v2he[1])
+
     dtmin = 0.01
     div = round(Int64, max(dtmin * N, 1))
 
-    fname_dyn = ruta*"WalkSAT_dynamics_filename_$(filename)_q_$(q)_t_$(time)_dtmin_$(dtmin)_nhist_$(Hist).txt"
-    fname_Psol = ruta*"WalkSAT_Psol_filename_$(filename)_q_$(q)_t_$(time)_dtmin_$(dtmin)_nhist_$(Hist).txt"
+    fname_dyn = ruta*"WalkSAT_dynamics_K_$(K)_N_$(N)_alpha_$(M/N)_q_$(q)_t_$(time)_dtmin_$(dtmin)_nhist_$(Hist).txt"
+    fname_Psol = ruta*"WalkSAT_Psol_K_$(K)_N_$(N)_alpha_$(M/N)_q_$(q)_t_$(time)_dtmin_$(dtmin)_nhist_$(Hist).txt"
 
-    SingleGraph(time, Hist, q, div, fname_dyn, fname_Psol)
+    SingleGraph(h, time, Hist, q, div, fname_dyn, fname_Psol)
 
 elseif ARGS[1] == "inside"
 
@@ -232,8 +235,8 @@ elseif ARGS[1] == "inside"
     dtmin = 0.01
     div = round(Int64, max(dtmin * N, 1))
 
-    fname_dyn = ruta*"WalkSAT_dynamics_N_$(N)_alpha_$(M/N)_q_$(q)_t_$(time)_dtmin_$(dtmin)_ngraphs_$(Exp)_nhist_$(Hist).txt"
-    fname_Psol = ruta*"WalkSAT_Psol_N_$(N)_alpha_$(M/N)_q_$(q)_t_$(time)_dtmin_$(dtmin)_ngraphs_$(Exp)_nhist_$(Hist).txt"
+    fname_dyn = ruta*"WalkSAT_dynamics_K_$(K)_N_$(N)_alpha_$(M/N)_q_$(q)_t_$(time)_dtmin_$(dtmin)_ngraphs_$(Exp)_nhist_$(Hist).txt"
+    fname_Psol = ruta*"WalkSAT_Psol_K_$(K)_N_$(N)_alpha_$(M/N)_q_$(q)_t_$(time)_dtmin_$(dtmin)_ngraphs_$(Exp)_nhist_$(Hist).txt"
 
     Datos(K,N,time,Exp,Hist,M,q, save_every, div, fname_dyn, fname_Psol)
 
