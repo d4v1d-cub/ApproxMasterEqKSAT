@@ -28,12 +28,12 @@ function CrearHGraph(N::Int,M::Int,K::Int,s::Int)::Hypergraph{Bool,Spin,UInt8}
 end
 
 
-function read_graph_from_file(filename::String)::Hypergraph{Bool,Spin,UInt8}
-    fin=open(filename, "r")
-    N, M = [parse(Int, x) for x in split(readline(fin))]
+function read_graph_from_file()::Hypergraph{Bool,Spin,UInt8}
+    N, M = [parse(Int, x) for x in split(readline())]
+    println("Reading graph with N=$(N), M=$(M)")
     h=Hypergraph{Bool,Spin,UInt8}(N,M)
     for he in 1:M
-        v = [parse(Int, x) for x in split(readline(fin))]
+        v = [parse(Int, x) for x in split(readline())]
         for n in v
             h[abs(n), he] = sign(n)
         end
@@ -178,7 +178,7 @@ function Datos(K::Int, N::Int, time::Float64, Exp::Int, Hist::Int, M::Int, q::Fl
 end
 
 
-function SingleGraph(time::Float64, filename::String, Hist::Int, q::Float64, 
+function SingleGraph(time::Float64, Hist::Int, q::Float64, 
                      div::Int64, fname_dyn::String, fname_Psol::String)
     println("Begining runs")
     alpha_u=zeros(Float64,round(Int, N*time+1))
@@ -186,7 +186,7 @@ function SingleGraph(time::Float64, filename::String, Hist::Int, q::Float64,
     sat = 0
     cumul_ener = 0
     cumul_ener_sqr = 0
-    h=read_graph_from_file(filename)
+    h=read_graph_from_file()
     N = nhv(h)
     hist = 0
     for hist in 1:Hist
@@ -203,11 +203,10 @@ function SingleGraph(time::Float64, filename::String, Hist::Int, q::Float64,
 end
 
 if ARGS[1] == "file"
-    filename = ARGS[2]
-    q = parse(Float64, ARGS[3])
-    Hist=parse(Int64, ARGS[4])
-    time=parse(Float64, ARGS[5])
-    ruta=ARGS[6]
+    q = parse(Float64, ARGS[2])
+    Hist=parse(Int64, ARGS[3])
+    time=parse(Float64, ARGS[4])
+    ruta=ARGS[5]
 
     dtmin = 0.01
     div = round(Int64, max(dtmin * N, 1))
@@ -215,7 +214,7 @@ if ARGS[1] == "file"
     fname_dyn = ruta*"WalkSAT_dynamics_filename_$(filename)_q_$(q)_t_$(time)_dtmin_$(dtmin)_nhist_$(Hist).txt"
     fname_Psol = ruta*"WalkSAT_Psol_filename_$(filename)_q_$(q)_t_$(time)_dtmin_$(dtmin)_nhist_$(Hist).txt"
 
-    SingleGraph(time, filename, Hist, q, div, fname_dyn, fname_Psol)
+    SingleGraph(time, Hist, q, div, fname_dyn, fname_Psol)
 
 elseif ARGS[1] == "inside"
 
