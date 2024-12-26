@@ -747,6 +747,7 @@ void print_history(char * filename)
 {
   FILE * fhist;
   fhist = fopen(filename, "w");
+  fprintf(fhist, "#nhist\t%d\n", numtry);
   int it;
   for (it=0; it < numflip/printtrace; it++){
     fprintf(fhist, "%li\t%lf\n", it * printtrace, (double) history[it] / numtry);
