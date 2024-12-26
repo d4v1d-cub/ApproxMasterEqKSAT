@@ -775,6 +775,8 @@ void update_and_print_statistics_end_try(void)
     r = 0;
     }
 
+    if (numtry % 50 == 0){
+
     printf(" %9i %9i %9.2f %9.2f %9.2f %9li %9li",
        lowbad,numfalse,avgfalse, std_dev_avgfalse,ratio_avgfalse,numflip, (numsuccesstry*100)/numtry);
     if (numsuccesstry > 0){
@@ -785,6 +787,8 @@ void update_and_print_statistics_end_try(void)
     }
     }
     printf("\n");
+    
+    }
 
     if (whiteflag)
         printf("average whiteness depth = %f\n", whitening());
