@@ -726,7 +726,7 @@ void print_statistics_start_flip(void)
 void init_history(void)
 {
     int it;
-    for (int it=0; it < cutoff/printtrace; it++){
+    for (it=0; it < cutoff/printtrace; it++){
       history[it] = 0;
     }
 }
