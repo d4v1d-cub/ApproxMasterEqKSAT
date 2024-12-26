@@ -214,7 +214,7 @@ if ARGS[1] == "file"
     h=read_graph_from_file()
     N = nhv(h)
     M = nhe(h)
-    K = length(h.v2he[1])
+    K = length(h.he2v[1])
 
     dtmin = 0.01
     div = round(Int64, max(dtmin * N, 1))
