@@ -35,7 +35,7 @@ function read_graph_from_file()::Hypergraph{Bool,Spin,UInt8}
     for he in 1:M
         v = [parse(Int, x) for x in split(readline())]
         for n in v
-            h[abs(n), he] = sign(n)
+            h[abs(n), he] = signbit(n)
         end
     end
     return h
