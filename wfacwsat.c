@@ -180,8 +180,10 @@ int makecount[MAXATOM+1];   /* number of clauses that become sat if var if flipp
 
 int numfalse;           /* number of false clauses */
 
+#define MAXPOINTS 1000100
+int history[MAXPOINTS];
 
-
+int print_every = 50;
 
 #ifdef _WATCH 
 int watch1[MAXCLAUSE];
@@ -381,6 +383,9 @@ void print_statistics_header(void);
 void initialize_statistics(void);
 void update_statistics_start_try(void);
 void print_statistics_start_flip(void);
+void update_history(void);
+void init_history(void);
+void print_history(void);
 void update_and_print_statistics_end_try(void);
 void update_statistics_end_flip(void);
 void print_statistics_final(void);
@@ -409,10 +414,11 @@ int main(int argc,char *argv[])
 #endif
     parse_parameters(argc, argv);
     srandom(seed);
-    print_parameters(argc, argv);
+    // print_parameters(argc, argv);
     initprob();
     initialize_statistics();
-    print_statistics_header();
+    init_history();
+    // print_statistics_header();
     signal(SIGINT, handle_interrupt);
     abort_flag = FALSE;
     (void) elapsed_seconds();
@@ -426,14 +432,22 @@ int main(int argc,char *argv[])
     if (superlinear) cutoff = base_cutoff * super(numtry);
 
     while((numfalse > target) && (numflip < cutoff)) {
-        print_statistics_start_flip();
+        //print_statistics_start_flip();
+        update_history();
         numflip++;
         var = (pickcode[heuristic])();    /* ********* */
         if (var >= 0)  flipatom(var);     /* ********* */
         update_statistics_end_flip();
     }
-    update_and_print_statistics_end_try();
+
+    //update_and_print_statistics_end_try();
+      if (numtry % print_every == 0){
+        print_history();
+      }
     }
+
+    print_history();
+
     expertime = elapsed_seconds();
     print_statistics_final();
     return status_flag;
@@ -556,6 +570,8 @@ void parse_parameters(int argc,char *argv[])
     }
     else if (strcmp(argv[i],"-whitening") == 0) 
         whiteflag = TRUE;
+    else if (strcmp(argv[i],"-print_every") == 0)
+        scanone(argc,argv,++i,&print_every);
     else 
     {
         fprintf(stderr, "General parameters:\n");
@@ -707,6 +723,30 @@ void print_statistics_start_flip(void)
 }
 
 
+void init_history(void)
+{
+    for (int i=0; i < cutoff/printtrace; i++){
+      history[i] = 0;
+    }
+}
+
+
+void update_history(void)
+{
+    if (printtrace && (numflip % printtrace == 0)){
+      history[numflip/printtrace] += numfalse;
+    }
+}
+
+
+void print_history(void)
+{
+    for (int i=0; i < cutoff/printtrace; i++){
+      printf("%li\t%lf\n", i * printtrace, (double) history[i] / numtry);
+    }
+}
+
+
 void update_and_print_statistics_end_try(void)
 {
     int i;
@@ -775,8 +815,6 @@ void update_and_print_statistics_end_try(void)
     r = 0;
     }
 
-    if (numtry % 50 == 0){
-
     printf(" %9i %9i %9.2f %9.2f %9.2f %9li %9li",
        lowbad,numfalse,avgfalse, std_dev_avgfalse,ratio_avgfalse,numflip, (numsuccesstry*100)/numtry);
     if (numsuccesstry > 0){
@@ -787,8 +825,6 @@ void update_and_print_statistics_end_try(void)
     }
     }
     printf("\n");
-    
-    }
 
     if (whiteflag)
         printf("average whiteness depth = %f\n", whitening());
