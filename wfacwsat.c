@@ -725,8 +725,9 @@ void print_statistics_start_flip(void)
 
 void init_history(void)
 {
-    for (int i=0; i < cutoff/printtrace; i++){
-      history[i] = 0;
+    int it;
+    for (int it=0; it < cutoff/printtrace; it++){
+      history[it] = 0;
     }
 }
 
@@ -741,9 +742,10 @@ void update_history(void)
 
 void print_history(void)
 {
-    for (int i=0; i < cutoff/printtrace; i++){
-      printf("%li\t%lf\n", i * printtrace, (double) history[i] / numtry);
-    }
+  int it;
+  for (it=0; it < cutoff/printtrace; it++){
+    printf("%li\t%lf\n", it * printtrace, (double) history[it] / numtry);
+  }
 }
 
 
