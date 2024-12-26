@@ -386,7 +386,7 @@ void update_statistics_start_try(void);
 void print_statistics_start_flip(void);
 void update_history(void);
 void init_history(void);
-void print_history(char *filename);
+void print_history(char *filename, int max_numflip);
 void update_and_print_statistics_end_try(void);
 void update_statistics_end_flip(void);
 void print_statistics_final(void);
@@ -424,6 +424,7 @@ int main(int argc,char *argv[])
     abort_flag = FALSE;
     (void) elapsed_seconds();
 
+    int max_numflip = 0;
     while (! abort_flag && numsuccesstry < numsol && numtry < numrun) {
     numtry++;
     init(initfile, initoptions);
@@ -441,13 +442,14 @@ int main(int argc,char *argv[])
         update_statistics_end_flip();
     }
 
+    if (numflip > max_numflip) max_numflip = numflip;
     //update_and_print_statistics_end_try();
       if (numtry % print_every == 0){
-        print_history(filehist);
+        print_history(filehist, max_numflip);
       }
     }
 
-    print_history(filehist);
+    print_history(filehist, max_numflip);
 
     expertime = elapsed_seconds();
     print_statistics_final();
@@ -743,13 +745,13 @@ void update_history(void)
 }
 
 
-void print_history(char * filename)
+void print_history(char * filename, int max_numflip)
 {
   FILE * fhist;
   fhist = fopen(filename, "w");
   fprintf(fhist, "#nhist\t%d\n", numtry);
   int it;
-  for (it=0; it < numflip/printtrace; it++){
+  for (it=0; it < max_numflip/printtrace + 1; it++){
     fprintf(fhist, "%li\t%lf\n", it * printtrace, (double) history[it] / numtry);
   }
   fclose(fhist);
