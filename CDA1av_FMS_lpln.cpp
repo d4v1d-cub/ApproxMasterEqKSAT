@@ -33,12 +33,14 @@ int get_max_l(double alpha, int K, double thr){
 // pu_cond[lp][ln][sj], lp = 0, ..., l_max; ln=0,...,l_max; sj=0,1 the state in the conditional
 // pi[sj] only needs two values, and is re-used for every lp and ln in pu_cond
 void init_probs(double ***&prob_joint, double ***&pu_cond, double *&pi_lp_ln, 
-                double *&pjoint_lp_ln, double ***&me_sum, int nch_fn, double p0, 
-                int l_max, long nindex_l){
+                double *&pjoint_lp_ln, double ***&me_sum, int K, int nch_fn, double p0, 
+                int l_max, long nindex_l, double alpha){
     double prod;
     int bit;
     prob_joint = new double **[nindex_l];
     me_sum = new double **[nindex_l];
+
+    int lp, ln;
     
     for (long i_p = 0; i_p < nindex_l; i_p++){
         prob_joint[i_p] = new double *[nindex_l];
@@ -46,11 +48,16 @@ void init_probs(double ***&prob_joint, double ***&pu_cond, double *&pi_lp_ln,
         for (long i_n = 0; i_n < nindex_l; i_n++){
             prob_joint[i_p][i_n] = new double [nch_fn];
             me_sum[i_p][i_n] = new double [nch_fn];
+            
             for (int ch = 0; ch < nch_fn; ch++){
                 prod = 1;
                 for (int w = 0; w < K; w++){
+                    lp = (i_p / (int) pow(l_max, w)) % l_max;
+                    ln = (i_n / (int) pow(l_max, w)) % l_max;
+
                     bit = ((ch >> w) & 1);
-                    prod *= (bit + (1 - 2 * bit) * p0);
+                    prod *= (bit + (1 - 2 * bit) * p0) * 
+                            gsl_ran_poisson_pdf(lp, alpha * K / 2) * gsl_ran_poisson_pdf(ln, alpha * K / 2);
                 }
                 prob_joint[i_p][i_n][ch] = prod;
             }
@@ -160,157 +167,121 @@ void comp_pcond(double ***prob_joint, double ***pu_cond, double *pi_lp_ln,
 }
 
 
-void sum_fms(int K, long i_p, long i_n, int w, double *prob_joint, double ***pu_cond, 
+double binomial_coef(int n, int k){
+    return gsl_ran_binomial_pdf(k, 1, n);
+}
+
+
+void sum_fms(int K, long i_p, long i_n, int plc_he, double *prob_joint, double ***pu_cond, 
              double **rates, int nch_fn, int l_max, double e_av, double *me_sum_src){
 
-    int lp = (i_p / (int) pow(l_max, w)) % l_max;
-    int ln = (i_n / (int) pow(l_max, w)) % l_max;
+    int bit, ch_flip, uns, uns_flip;
+
+    int lp = (i_p / (int) pow(l_max, plc_he)) % l_max;
+    int ln = (i_n / (int) pow(l_max, plc_he)) % l_max;
+
+    double sums[2][2]; 
+    for (int s = 0; s < 2; s++){
+        for (int sat = 0; sat < 2; sat++){
+            sums[s][sat] = 0;
+        }
+    }
+
+    for (int up = 0; up < lp; up++){
+        for (int un = 0; un < ln; un++){
+            sums[0][0] +=  binomial_coef(lp, up) * binomial_coef(ln, un) * rate_fms(un, up, rates, e_av) * 
+                           pow(pu_cond[lp][ln][0], up) * pow(1 - pu_cond[lp][ln][0], lp - up) * 
+                           pow(pu_cond[ln - 1][lp + 1][1], un) * pow(1 - pu_cond[ln - 1][lp + 1][1], ln - un);
+            sums[1][0] +=  binomial_coef(lp, up) * binomial_coef(ln, un) * rate_fms(up, un, rates, e_av) * 
+                           pow(pu_cond[lp][ln][1], up) * pow(1 - pu_cond[lp][ln][1], lp - up) * 
+                           pow(pu_cond[ln - 1][lp + 1][0], un) * pow(1 - pu_cond[ln - 1][lp + 1][0], ln - un);               
+
+            sums[0][1] +=  binomial_coef(lp, up) * binomial_coef(ln, un) * rate_fms(un, up + 1, rates, e_av) * 
+                           pow(pu_cond[lp][ln][0], up) * pow(1 - pu_cond[lp][ln][0], lp - up) * 
+                           pow(pu_cond[ln - 1][lp + 1][1], un) * pow(1 - pu_cond[ln - 1][lp + 1][1], ln - un);
+            sums[1][1] +=  binomial_coef(lp, up) * binomial_coef(ln, un) * rate_fms(up + 1, un, rates, e_av) * 
+                           pow(pu_cond[lp][ln][1], up) * pow(1 - pu_cond[lp][ln][1], lp - up) * 
+                           pow(pu_cond[ln - 1][lp + 1][0], un) * pow(1 - pu_cond[ln - 1][lp + 1][0], ln - un);
+
+        }
+    }
+
+    for (int ch_src = 0; ch_src < nch_fn; ch_src++){
+        bit = ((ch_src >> plc_he) & 1);
+        ch_flip = (ch_src ^ (1 << plc_he));
+        uns = (ch_src == nch_fn - 1);
+        uns_flip = (ch_flip == nch_fn - 1);
+        me_sum_src[ch_src] += -sums[bit][uns || uns_flip] * prob_joint[ch_src] + 
+                              sums[1 - bit][uns || uns_flip] * prob_joint[ch_flip];
+        // if any of the two, uns and uns_flip, is one, then one has to use the value in
+        // sums[2]. One of them represents the probability of a jump when ch_src in unsat,
+        // and therefore it goes from E[bit unsat] + 1 ----> E[bit sat]. The other jump makes
+        // E[bit sat] ----> E[bit unsat] + 1
+    }
+
+    delete [] sums;
+    
+}
 
 
-    long he;
-    int ch_flip;
-    bool bit, uns, uns_flip;
-
-    for (E[0] = 0; E[0] < ln + 1; E[0]++){
-        for (E[1] = 0; E[1] < lp + 1; E[1]++){
-
-            terms[0][0] = rate_fms(E[0], E[1], rates, e_av) * fE[0][0][E[0]] * fE[1][0][E[1]];
-            terms[1][0] = rate_fms(E[1], E[0], rates, e_av) * fE[0][1][E[0]] * fE[1][1][E[1]];
-
-            bit = ((ch_u >> plc_he) & 1);
-
-            terms[bit][1] = rate_fms(E[bit] + 1, E[1 - bit], rates, e_av) * 
-                            fE[bit][bit][E[bit]] * fE[1 - bit][bit][E[1 - bit]];
-            terms[1 - bit][1] = rate_fms(E[1 - bit], E[bit] + 1, rates, e_av) * 
-                                fE[1 - bit][1 - bit][E[1 - bit]] * fE[bit][1 - bit][E[bit]];
-            
-            for (int ch_src = 0; ch_src < nch_fn; ch_src++){
-                bit = ((ch_src >> plc_he) & 1);
-                ch_flip = (ch_src ^ (1 << plc_he));
-                uns = (ch_src == ch_u);
-                uns_flip = (ch_flip == ch_u);
-                me_sum_src[ch_src] += -terms[bit][uns || uns_flip] * prob_joint[ch_src] + 
-                                      terms[1 - bit][uns || uns_flip] * prob_joint[ch_flip];
-                // if any of the two, uns and uns_flip, is one, then one has to use the terms
-                // in terms[1]. One of them represents the probability of a jump when ch_src in unsat,
-                // and therefore it goes from E[bit unsat] + 1 ----> E[bit sat]. The other jump makes
-                // E[bit sat] ----> E[bit unsat] + 1
+// it computes all the derivatives of the joint probabilities
+void der_fms(double ***prob_joint, double ***pu_cond, double **rates, int K, int l_max, 
+             int nch_fn, long nindex_l, double e_av, double ***me_sum){
+    for (long ip = 0; ip < nindex_l; ip++){
+        for (long in = 0; in < nindex_l; in++){
+            for (int ch = 0; ch < nch_fn; ch++){
+                me_sum[ip][in][ch] = 0;
             }
-
-        }
-    }
-    delete_aux_arr(pu_l, fE, fEnew);
-
-}
-
-
-void comp_sums(double alpha, int K, int max_gamma, long nsamples, int ch_u, int plc_he, 
-               double *prob_joint, double ***pu_cond, double **rates, int nch_fn, double e_av, 
-               double *me_sum_src, gsl_rng * r){
-    int gamma;
-    for (long i = 0; i < nsamples; i++){
-        gamma = gsl_ran_poisson(r, alpha * K);
-        if (gamma > max_gamma){
-            gamma = max_gamma;
-        }       
-        sum_fms(K, gamma, ch_u, plc_he, prob_joint, pu_cond, rates, nch_fn, e_av, me_sum_src, r);
-    }
-}
-
-
-void comp_sums(double alpha, int K, int max_gamma, int ch_u, int plc_he, 
-               double *prob_joint, double ***pu_cond, double **rates, int nch_fn, double e_av, 
-               double *me_sum_src, gsl_rng * r){
-    double *me_sum_gamma;
-    me_sum_gamma = new double[nch_fn];
-    for (int gamma = 0; gamma < max_gamma + 1; gamma++){
-        for (int ch = 0; ch < nch_fn; ch++){
-            me_sum_gamma[ch] = 0;
-        }
-        sum_fms(K, gamma, ch_u, plc_he, prob_joint, pu_cond, rates, nch_fn, e_av, me_sum_gamma, r);
-
-        for (int ch = 0; ch < nch_fn; ch++){
-            me_sum_src[ch] += me_sum_gamma[ch] * gsl_ran_poisson_pdf(gamma, alpha * K);
-        }
-    }
-}
-
-
-// it computes all the derivatives of the joint probabilities
-void der_fms(double **prob_joint, double ***pu_cond, double **rates, long nsamples, 
-             double alpha, int K, int max_gamma, int nch_fn, double e_av, double **me_sum, 
-             gsl_rng * r){
-    for (int ch_u = 0; ch_u < nch_fn; ch_u++){
-        for (int ch = 0; ch < nch_fn; ch++){
-            me_sum[ch_u][ch] = 0;
         }
     }
 
     // candidate to be a parallel for
     #pragma omp parallel for
-    for (int ch_u = 0; ch_u < nch_fn; ch_u++){
-        for (int w = 0; w < K; w++){
-            comp_sums(alpha, K, max_gamma, nsamples, ch_u, w, prob_joint[ch_u], pu_cond, 
-                      rates, nch_fn, e_av, me_sum[ch_u], r);
-        }
-        for (int ch = 0; ch < nch_fn; ch++){
-            me_sum[ch_u][ch] /= nsamples;
-        }
-    }
-}
-
-
-// it computes all the derivatives of the joint probabilities
-void der_fms(double **prob_joint, double ***pu_cond, double **rates, 
-             double alpha, int K, int max_gamma, int nch_fn, double e_av, double **me_sum, 
-             gsl_rng * r){
-    for (int ch_u = 0; ch_u < nch_fn; ch_u++){
-        for (int ch = 0; ch < nch_fn; ch++){
-            me_sum[ch_u][ch] = 0;
-        }
-    }
-
-    // candidate to be a parallel for
-    #pragma omp parallel for
-    for (int ch_u = 0; ch_u < nch_fn; ch_u++){
-        for (int w = 0; w < K; w++){
-            comp_sums(alpha, K, max_gamma, ch_u, w, prob_joint[ch_u], pu_cond, 
-                      rates, nch_fn, e_av, me_sum[ch_u], r);
+    for (long ip = 0; ip < nindex_l; ip++){
+        for (long in = 0; in < nindex_l; in++){
+            for (int w = 0; w < K; w++){
+                sum_fms(K, ip, in, w, prob_joint[ip][in], pu_cond, rates, nch_fn, l_max, e_av, 
+                        me_sum[ip][in]);
+            }
         }
     }
 }
 
 
-double energy(double **prob_joint, int nch_fn){
+double energy(double ***prob_joint, long nindex_l, int nch_fn){
     double e = 0;
-    for (int ch_u = 0; ch_u < nch_fn; ch_u++){
-        e += prob_joint[ch_u][ch_u];
+    for (long ip = 0; ip < nindex_l; ip++){
+        for (long in = 0; in < nindex_l; in++){
+            e += prob_joint[ip][in][nch_fn - 1];
+        }
     }
-    return e / nch_fn;
+    return e;
 }
 
 
 // peforms the integration of the differential equations with the 2nd order Runge-Kutta
 // the method is implemented with adaptive step size
-void RK2_fms(double alpha, int K, int nch_fn, double eta, int max_gamma, long nsamples, 
-             double p0, char *fileener, double tl, gsl_rng * r, double tol = 1e-2, double t0 = 0, double dt0 = 0.01, 
+void RK2_fms(double alpha, int K, int nch_fn, double eta, int l_max, 
+             double p0, char *fileener, double tl, double tol = 1e-2, double t0 = 0, double dt0 = 0.01, 
              double ef = 1e-6, double dt_min = 1e-7){
     double **rates;
-    double **prob_joint, ***pu_cond, **me_sum, **pi;
+    double ***prob_joint, ***pu_cond, ***me_sum, *pi_lp_ln, *pjoint_lp_ln;
     double e, error;                 
     
+    long nindex_l = (long) pow(l_max, K);
     
-    table_all_rates(max_gamma, K, eta, rates);
+    table_all_rates(l_max, K, eta, rates);
     
-    init_probs(prob_joint, pu_cond, pi, me_sum, K, nch_fn, p0);
+    init_probs(prob_joint, pu_cond, pi_lp_ln, pjoint_lp_ln, me_sum, K, 
+               nch_fn, p0, l_max, nindex_l, alpha);
 
     // initialize auxiliary arrays for the Runge-Kutta integration
-    double **k1, **k2, **prob_joint_1;
-    init_RK_arr(k1, k2, prob_joint_1, nch_fn);
+    double ***k1, ***k2, ***prob_joint_1;
+    init_RK_arr(k1, k2, prob_joint_1, nch_fn, nindex_l);
 
     ofstream fe(fileener);
     
-    e = energy(prob_joint, nch_fn) * alpha;
+    e = energy(prob_joint, nindex_l, nch_fn) * alpha;
     fe << t0 << "\t" << e << endl;   // it prints the energy density
 
     double dt1 = dt0;
@@ -328,17 +299,19 @@ void RK2_fms(double alpha, int K, int nch_fn, double eta, int max_gamma, long ns
 
         auto t1 = std::chrono::high_resolution_clock::now();
 
-        comp_pcond(prob_joint, pu_cond, pi, K, nch_fn);
+        comp_pcond(prob_joint, pu_cond, pi_lp_ln, pjoint_lp_ln, K, nch_fn, l_max, nindex_l);
 
-        der_fms(prob_joint, pu_cond, rates, nsamples, alpha, K, max_gamma, nch_fn, e, me_sum, r);   // in the rates, I use the energy density
+        der_fms(prob_joint, pu_cond, rates, K, l_max, nch_fn, nindex_l, e, me_sum);   // in the rates, I use the energy density
 
         valid = true;
-        for (int ch_u = 0; ch_u < nch_fn; ch_u++){
-            for (int ch = 0; ch < nch_fn; ch++){
-                k1[ch_u][ch] = dt1 * me_sum[ch_u][ch];
-                prob_joint_1[ch_u][ch] = prob_joint[ch_u][ch] + k1[ch_u][ch];
-                if (prob_joint_1[ch_u][ch] < 0){
-                    valid = false;
+        for (long ip = 0; ip < nindex_l; ip++){
+            for (long in = 0; in < nindex_l; in++){
+                for (int ch = 0; ch < nch_fn; ch++){
+                    k1[ip][in][ch] = dt1 * me_sum[ip][in][ch];
+                    prob_joint_1[ip][in][ch] = prob_joint[ip][in][ch] + k1[ip][in][ch];
+                    if (prob_joint_1[ip][in][ch] < 0){
+                        valid = false;
+                    }
                 }
             }
         }
@@ -353,32 +326,36 @@ void RK2_fms(double alpha, int K, int nch_fn, double eta, int max_gamma, long ns
             }
 
             valid = true;
-            for (int ch_u = 0; ch_u < nch_fn; ch_u++){
+            for (long ip = 0; ip < nindex_l; ip++){
+                for (long in = 0; in < nindex_l; in++){
+                    for (int ch = 0; ch < nch_fn; ch++){
+                        k1[ip][in][ch] = dt1 * me_sum[ip][in][ch];
+                        prob_joint_1[ip][in][ch] = prob_joint[ip][in][ch] + k1[ip][in][ch];
+                        if (prob_joint_1[ip][in][ch] < 0){
+                            valid = false;
+                        }
+                    }
+                }
+            }
+        }
+        
+        e = energy(prob_joint_1, nindex_l, nch_fn) * alpha;
+        comp_pcond(prob_joint_1, pu_cond, pi_lp_ln, pjoint_lp_ln, K, nch_fn, l_max, nindex_l);
+
+        der_fms(prob_joint_1, pu_cond, rates, K, l_max, nch_fn, nindex_l, e, me_sum);
+            
+        valid = true;
+        for (long ip = 0; ip < nindex_l; ip++){
+            for (long in = 0; in < nindex_l; in++){
                 for (int ch = 0; ch < nch_fn; ch++){
-                    k1[ch_u][ch] = dt1 * me_sum[ch_u][ch];
-                    prob_joint_1[ch_u][ch] = prob_joint[ch_u][ch] + k1[ch_u][ch];
-                    if (prob_joint_1[ch_u][ch] < 0){
+                    k2[ip][in][ch] = dt1 * me_sum[ip][in][ch];
+                    if (prob_joint[ip][in][ch] + (k1[ip][in][ch] + k2[ip][in][ch]) / 2 < 0){
                         valid = false;
                     }
                 }
             }
         }
         
-        e = energy(prob_joint_1, nch_fn) * alpha;
-        comp_pcond(prob_joint_1, pu_cond, pi, K, nch_fn);
-
-        der_fms(prob_joint_1, pu_cond, rates, nsamples, alpha, K, max_gamma, nch_fn, e, me_sum, r);
-            
-        valid = true;
-        for (int ch_u = 0; ch_u < nch_fn; ch_u++){
-            for (int ch = 0; ch < nch_fn; ch++){
-                k2[ch_u][ch] = dt1 * me_sum[ch_u][ch];
-                if (prob_joint[ch_u][ch] + (k1[ch_u][ch] + k2[ch_u][ch]) / 2 < 0){
-                    valid = false;
-                }
-            }
-        }
-
         if (!valid){
             //  cout << "Some probabilities would be negative if dt=" << dt1 << " is taken" << endl;
             dt1 /= 2;
@@ -387,7 +364,7 @@ void RK2_fms(double alpha, int K, int nch_fn, double eta, int max_gamma, long ns
                 dt_min /= 2;
                 //  cout << "dt_min also halfed" << endl;
             }
-            e = energy(prob_joint, nch_fn) * alpha;
+            e = energy(prob_joint, nindex_l, nch_fn) * alpha;
         }else{
             error = 0;
             for (int ch_u = 0; ch_u < nch_fn; ch_u++){
