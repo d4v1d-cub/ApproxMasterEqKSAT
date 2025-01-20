@@ -1,106 +1,232 @@
 #include <iostream>
 #include <fstream>
-#include <vector>
-#include <algorithm>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_cdf.h>
+#include <gsl/gsl_sf_gamma.h>
 #include <cmath>
 #include <omp.h>
 #include <chrono>
+#include <vector>
 
 using namespace std;
 
+double binomial_coef(int n, int k){
+    return gsl_ran_binomial_pdf(k, 1, n);
+}
 
 
-int get_max_l(double alpha, int K, double thr){
-    int l_max = 0;
-    double cdf_Q = gsl_cdf_poisson_Q(l_max, alpha * K / 2);
+int get_max_gamma(double alpha, int K, double thr){
+    int max_gamma = 0;
+    double cdf_Q = gsl_cdf_poisson_Q(max_gamma, alpha * K);
     while (cdf_Q > thr){
-        l_max++;
-        cdf_Q = gsl_cdf_poisson_Q(l_max, alpha * K / 2);
+        max_gamma++;
+        cdf_Q = gsl_cdf_poisson_Q(max_gamma, alpha * K);
     }
-    return l_max;
+    return max_gamma;
+}
+
+
+void generate_index_gamma(vector <vector <int> > &indexes, vector <int> vals, int gamma, int K, 
+                          int w){
+    if (w == K){
+        indexes.push_back(vals);
+    }else{
+        for (int g = 0; g < gamma + 1; g++){
+            vals.push_back(g);
+            generate_index_gamma(indexes, vals, g, K, w + 1);
+            vals.pop_back();
+        }
+    }
+}
+
+
+void generate_index_lp(vector <vector <int> > &indexes_ind, vector <int> ind_gamma, vector <int> ind_l,
+                       int K, int w){
+    if (w == K){
+        indexes_ind.push_back(ind_l);
+    }else{
+        for (int lp = 0; lp < ind_gamma[w] + 1; lp++){
+            ind_l.push_back(lp);
+            generate_index_lp(indexes_ind, ind_gamma, ind_l, K, w + 1);
+            ind_l.pop_back();
+        }
+    }
+}
+
+
+vector < vector < vector <int> > > generate_all_index_lp(vector <vector <int> > indexes_gamma, 
+                                                         int K){
+    vector < vector < vector < int > > > indexes_lp = vector < vector < vector <int> > > ();
+    vector < int > vals = vector < int > (); 
+    for (long ind = 0; ind < indexes_gamma.size(); ind++){
+        vector < vector <int> > indexes_ind = vector < vector <int> > ();
+        generate_index_lp(indexes_ind, indexes_gamma[ind], vals, K, 0);
+        indexes_lp.push_back(indexes_ind);
+    }
+    return indexes_lp;
+}
+
+
+double count_independent_repetitions(vector <int> vals_g, vector <int> vals_l){
+    double rep = 1;
+    int w, counter;
+    while(vals_g.size() > 1){
+        w = 1;
+        counter = 0;
+        while (w < vals_g.size()){
+            if (vals_g[w] == vals_g[0] && vals_l[w] == vals_l[0]){
+                vals_g.erase(vals_g.begin() + w);
+                vals_l.erase(vals_l.begin() + w);
+                counter++;
+            }else{
+                w++;
+            }
+        }
+        vals_g.erase(vals_g.begin());
+        vals_l.erase(vals_l.begin());
+        rep *= gsl_sf_fact(counter + 1);
+    }
+    return rep;
+}
+
+
+void prepare_index_maps(vector <vector <vector < pair <long, long> > > > &vals_2_ind, vector < vector <int> > &ncombs_full,
+                        vector <vector <vector <int > > > &ncombs_glp, int max_gamma, int K,
+                        vector <vector <int> > indexes_gamma, vector < vector < vector < int > > > indexes_lp,
+                        vector <vector <vector <int > > > &place_there){
+    ncombs_full = vector <vector <int> > (indexes_gamma.size(), vector <int> ());
+    double rep;
+    for (long ind_g = 0; ind_g < indexes_gamma.size(); ind_g++){
+        for (long ind_l = 0; ind_l < indexes_lp[ind_g].size(); ind_l++){
+            rep = count_independent_repetitions(indexes_gamma[ind_g], indexes_lp[ind_g][ind_l]);
+            ncombs_full[ind_g].push_back(gsl_sf_fact(K) / rep);
+        }
+    }
+
+    vals_2_ind = vector <vector <vector <pair <long, long> > > > (max_gamma + 1, vector <vector <pair <long, long> > > ());
+    ncombs_glp = vector <vector <vector <int> > > (max_gamma + 1, vector <vector <int> > ());
+    place_there = vector <vector <vector <int> > > (max_gamma + 1, vector <vector <int> > ());
+    int w;
+    bool cond;
+    for (int gamma = 0; gamma < max_gamma + 1; gamma++){
+        for (int lp = 0; lp < gamma + 1; lp++){
+            vector <pair <long, long> > ind_in = vector <pair <long, long> > ();
+            vector <int> comb_in = vector <int> ();
+            vector <int> plc_in = vector <int> ();
+            for (long ind_g = 0; ind_g < indexes_gamma.size(); ind_g++){
+                for (long ind_l = 0; ind_l < indexes_lp[ind_g].size(); ind_l++){
+                    w = 0;
+                    cond = false;
+                    while (w < K && !cond){
+                        if (indexes_gamma[ind_g][w] == gamma && indexes_lp[ind_g][ind_l][w] == lp){
+                            cond = true;
+                        }
+                        w++;
+                    }
+                    if (cond){
+                        w--;
+                        ind_in.push_back(pair <long, long> (ind_g, ind_l));
+
+                        vector <int> indexes_g_exc(indexes_gamma[ind_g]);
+                        indexes_g_exc.erase(indexes_g_exc.begin() + w);
+                        vector <int> indexes_l_exc(indexes_lp[ind_g][ind_l]);
+                        indexes_l_exc.erase(indexes_l_exc.begin() + w);
+
+                        rep = count_independent_repetitions(indexes_g_exc, indexes_l_exc);
+                        comb_in.push_back(gsl_sf_fact(K - 1) / rep);
+                        
+                        plc_in.push_back(w);
+                    }
+                }
+            }
+
+            vals_2_ind[gamma].push_back(ind_in);
+            ncombs_glp[gamma].push_back(comb_in);
+            place_there[gamma].push_back(plc_in);
+        }
+    }
 }
 
 
 // initializes all the joint and conditional probabilities
-// prob_joint[in_lp][in_ln][ch], with in_lp and index that goes over all the possible
-// combinations of l+ links. If the maximum allowed value is l_max, and there are
-// K variables inside a clause, the number of combinations is (l_max)^{K}. One could think
-// in_lp as a number with K digits in the base l_max.
-// the index in_ln is the analogous for the links l-
+// prob_joint[index_g][index_lp][ch], with index_g that goes over all the possible
+// combinations of connectivities and index_lp that goes over all the possible combinations
+// of positive links lp. Each combination appears only once.
 // ch=0,...,2^{K}-1 is the combination of the s_a. ch=2^{K}-1 is the unsat combination 
-// pu_cond[lp][ln][sj], lp = 0, ..., l_max; ln=0,...,l_max; sj=0,1 the state in the conditional
-// pi[sj] only needs two values, and is re-used for every lp and ln in pu_cond
-void init_probs(double ***&prob_joint, double ***&pu_cond, double *&pi_lp_ln, 
-                double *&pjoint_lp_ln, double ***&me_sum, int K, int nch_fn, double p0, 
-                int l_max, long nindex_l, double alpha){
+// pu_cond[gamma][lp][sj], gamma = 0, ..., max_gamma; lp=0,...,gamma; sj=0,1 the state in the conditional
+// pi_gamma_lp[sj] only needs two values, and is re-used for every gamma and lp when computing pu_cond
+// pjoint_gamma_ln[sj] saves the joint probability of having one variable sj and the rest
+// of the clause in the unsat combinatio. Is re-used for every gamma and lp when computing pu_cond  
+void init_probs(double ***&prob_joint, double ***&pu_cond, double *&pi_gamma_lp, 
+                double *&pjoint_gamma_lp, double ***&me_sum, int K, int nch_fn, double p0, 
+                int max_gamma, double alpha, vector <vector <int> > indexes_gamma, 
+                vector < vector < vector < int > > > indexes_lp){
     double prod;
     int bit;
-    prob_joint = new double **[nindex_l];
-    me_sum = new double **[nindex_l];
+    prob_joint = new double **[indexes_gamma.size()];
+    me_sum = new double **[indexes_gamma.size()];
 
-    int lp, ln;
-    
-    for (long i_p = 0; i_p < nindex_l; i_p++){
-        prob_joint[i_p] = new double *[nindex_l];
-        me_sum[i_p] = new double *[nindex_l];
-        for (long i_n = 0; i_n < nindex_l; i_n++){
-            prob_joint[i_p][i_n] = new double [nch_fn];
-            me_sum[i_p][i_n] = new double [nch_fn];
-            
+    int ind_single, gamma_in, lp_in;
+
+    for (long ind_g = 0; ind_g < indexes_gamma.size(); ind_g++){
+        prob_joint[ind_g] = new double *[indexes_lp[ind_g].size()];
+        me_sum[ind_g] = new double *[indexes_lp[ind_g].size()];
+        for (long ind_l = 0; ind_l < indexes_lp[ind_g].size(); ind_l++){
+            prob_joint[ind_g][ind_l] = new double [nch_fn];
+            me_sum[ind_g][ind_l] = new double [nch_fn];
             for (int ch = 0; ch < nch_fn; ch++){
                 prod = 1;
                 for (int w = 0; w < K; w++){
-                    lp = (i_p / (int) pow(l_max, w)) % l_max;
-                    ln = (i_n / (int) pow(l_max, w)) % l_max;
-
+                    gamma_in = indexes_gamma[ind_g][w];
+                    lp_in = indexes_lp[ind_g][ind_l][w];
+                    
                     bit = ((ch >> w) & 1);
                     prod *= (bit + (1 - 2 * bit) * p0) * 
-                            gsl_ran_poisson_pdf(lp, alpha * K / 2) * gsl_ran_poisson_pdf(ln, alpha * K / 2);
+                            gsl_ran_poisson_pdf(gamma_in, alpha * K) * 
+                            binomial_coef(gamma_in, lp_in) / pow(2, gamma_in);
                 }
-                prob_joint[i_p][i_n][ch] = prod;
+                prob_joint[ind_g][ind_l][ch] = prod;
             }
         }
     }
     
-    pu_cond = new double **[l_max];
+    pu_cond = new double **[max_gamma + 1];
 
-    for (int lp = 0; lp < l_max; lp++){
-        pu_cond[lp] = new double *[l_max];
-        for (int ln = 0; ln < l_max; ln++){
-            pu_cond[lp][ln] = new double [2];
+    for (int gamma = 0; gamma < max_gamma + 1; gamma++){
+        pu_cond[gamma] = new double *[gamma + 1];
+        for (int lp = 0; lp < gamma + 1; lp++){
+            pu_cond[gamma][lp] = new double [2];
         }
     }
 
-    pi_lp_ln = new double[2];
-    pjoint_lp_ln = new double [2];
+    pi_gamma_lp = new double[2];
+    pjoint_gamma_lp = new double [2];
 }
 
 
 // initializes the auxiliary arrays for the Runge-Kutta integration
 void init_RK_arr(double ***&k1, double ***&k2, double ***&prob_joint_1, 
-                int nch_fn, long nindex_l){
-    k1 = new double **[nindex_l];
-    k2 = new double **[nindex_l];
-    prob_joint_1 = new double **[nindex_l];
+                 int nch_fn, vector <vector <int> > indexes_gamma, 
+                 vector < vector < vector < int > > > indexes_lp){
+    k1 = new double **[indexes_gamma.size()];
+    k2 = new double **[indexes_gamma.size()];
+    prob_joint_1 = new double **[indexes_gamma.size()];
 
-    for (long i_p = 0; i_p < nindex_l; i_p++){
-        k1[i_p] = new double *[nindex_l];
-        k2[i_p] = new double *[nindex_l];
-        prob_joint_1[i_p] = new double *[nindex_l];
-        for (long i_n = 0; i_n < nindex_l; i_n++){
-            k1[i_p][i_n] = new double [nch_fn];
-            k2[i_p][i_n] = new double [nch_fn];
-            prob_joint_1[i_p][i_n] = new double [nch_fn];
+    for (long ind_g = 0; ind_g < indexes_gamma.size(); ind_g++){
+        k1[ind_g] = new double *[indexes_lp[ind_g].size()];
+        k2[ind_g] = new double *[indexes_lp[ind_g].size()];
+        prob_joint_1[ind_g] = new double *[indexes_lp[ind_g].size()];
+        for (long ind_l = 0; ind_l < indexes_lp[ind_g].size(); ind_l++){
+            k1[ind_g][ind_l] = new double [nch_fn];
+            k2[ind_g][ind_l] = new double [nch_fn];
+            prob_joint_1[ind_g][ind_l] = new double [nch_fn];
             for (int ch = 0; ch < nch_fn; ch++){
-                k1[i_p][i_n][ch] = 0;
-                k2[i_p][i_n][ch] = 0;
-                prob_joint_1[i_p][i_n][ch] = 0;
+                k1[ind_g][ind_l][ch] = 0;
+                k2[ind_g][ind_l][ch] = 0;
+                prob_joint_1[ind_g][ind_l][ch] = 0;
             }
         }
     }
-
 }
 
 
@@ -115,70 +241,70 @@ double rate_fms(int E0, int E1, int K, double eta){
 }
 
 
-void table_all_rates(int l_max, int K, double eta, double **&rates){
-    rates = new double *[l_max + 1];
-    for (int E0 = 0; E0 < l_max + 1; E0++){
-        rates[E0] = new double [l_max + 1];
-        for (int E1 = 0; E1 < l_max + 1; E1++){
-            rates[E0][E1] = rate_fms(E0, E1, K, eta);
+void table_all_rates(int max_gamma, int K, double eta, double **&rates){
+    rates = new double *[max_gamma + 1];
+    for (int gamma = 0; gamma < max_gamma + 1; gamma++){
+        rates[gamma] = new double [gamma + 1];
+        for (int E0 = 0; E0 < gamma + 1; E0++){
+            rates[gamma][E0] = rate_fms(E0, gamma - E0, K, eta);
         }
     }
 }
 
 
 double rate_fms(int E0, int E1, double **rates, double e_av){
-    return rates[E0][E1] / e_av;
+    return rates[E0 + E1][E0] / e_av;
 }
 
 
 // it computes the conditional probabilities of having a partially unsatisfied clause, given the 
 // value of one variable in the clause
-void comp_pcond(double ***prob_joint, double ***pu_cond, double *pi_lp_ln, 
-                double *pjoint_lp_ln, int K, int nch_fn, int l_max, long nindex_l){
+void comp_pcond(double ***prob_joint, double ***pu_cond, double *pi_gamma_lp, 
+                double *pjoint_gamma_lp, int K, int nch_fn, int max_gamma, 
+                vector <vector <int> > indexes_gamma, vector < vector < vector < int > > > indexes_lp, 
+                vector <vector <vector < pair <long, long> > > > vals_2_ind,
+                vector <vector <vector <int > > > ncombs_glp, 
+                vector <vector <vector <int > > > place_there){
     double pu;
-    int bit;
-    int ch_uns_flip;
-    for (int lp = 0; lp < l_max; lp++){
-        for (int ln = 0; ln < l_max; ln++){
+    int bit, plc;
+    long ind_g, ind_l;
+    for (int gamma = 0; gamma < max_gamma + 1; gamma++){
+        for (int lp = 0; lp < gamma + 1; lp++){
             for (int s = 0; s < 2; s++){
-                pi_lp_ln[s] = 0;
-                pjoint_lp_ln[s] = 0;
+                pi_gamma_lp[s] = 0;
+                pjoint_gamma_lp[s] = 0;
             }
-
-            for (long i_p = lp; i_p < nindex_l; i_p+=l_max){
-                for (long i_n = ln; i_n < nindex_l; i_n+=l_max){
-                    for (int s = 0; s < 2; s++){
-                        pjoint_lp_ln[s] += prob_joint[i_p][i_n][(nch_fn - 1) ^ (1 - s)];  
-                        // when s = 0, it inverts the last bit of the unsat combination (nch_fn - 1)
-                        // when s = 1, it does not touch the last bit of the unsat combination
-                    }
-                    for (int ch = 0; ch < nch_fn; ch++){
-                        bit = (ch & 1);
-                        pi_lp_ln[bit] += prob_joint[i_p][i_n][ch];
-                    }
+            for (long i = 0; i < vals_2_ind[gamma][lp].size(); i++){
+                ind_g = vals_2_ind[gamma][lp][i].first;
+                ind_l = vals_2_ind[gamma][lp][i].second;
+                plc = place_there[gamma][lp][i];
+                for (int s = 0; s < 2; s++){
+                    pjoint_gamma_lp[s] += prob_joint[ind_g][ind_l][(nch_fn - 1) ^ ((1 - s) << plc)] * 
+                                          ncombs_glp[gamma][lp][i];  
+                    // when s = 0, it inverts the last bit of the unsat combination (nch_fn - 1)
+                    // when s = 1, it does not touch the last bit of the unsat combination
+                }
+                for (int ch = 0; ch < nch_fn; ch++){
+                    bit = ((ch >> plc) & 1);
+                    pi_gamma_lp[bit] += prob_joint[ind_g][ind_l][ch] * 
+                                        ncombs_glp[gamma][lp][i];  
                 }
             }
 
             for (int s = 0; s < 2; s++){
-                pu_cond[lp][ln][s] = pjoint_lp_ln[s] / pi_lp_ln[s]; 
+                pu_cond[gamma][lp][s] = pjoint_gamma_lp[s] / pi_gamma_lp[s]; 
             }
         }
     }
 }
 
 
-double binomial_coef(int n, int k){
-    return gsl_ran_binomial_pdf(k, 1, n);
-}
-
-
-void sum_fms(int K, long i_p, long i_n, int plc_he, double *prob_joint, double ***pu_cond, 
-             double **rates, int nch_fn, int l_max, double e_av, double *me_sum_src){
+void sum_fms(int K, int gamma, int lp, int plc_he, double *prob_joint, double ***pu_cond, 
+             double **rates, int nch_fn, int max_gamma, double e_av, double *me_sum_src){
 
     int bit, ch_flip, uns, uns_flip;
 
-    int lp = (i_p / (int) pow(l_max, plc_he)) % l_max;
-    int ln = (i_n / (int) pow(l_max, plc_he)) % l_max;
+    int ln = gamma - lp;
 
     double sums[2][2]; 
     for (int s = 0; s < 2; s++){
@@ -187,24 +313,39 @@ void sum_fms(int K, long i_p, long i_n, int plc_he, double *prob_joint, double *
         }
     }
 
-    for (int up = 0; up < lp; up++){
-        for (int un = 0; un < ln; un++){
-            sums[0][0] +=  binomial_coef(lp, up) * binomial_coef(ln, un) * rate_fms(un, up, rates, e_av) * 
-                           pow(pu_cond[lp][ln][0], up) * pow(1 - pu_cond[lp][ln][0], lp - up) * 
-                           pow(pu_cond[ln - 1][lp + 1][1], un) * pow(1 - pu_cond[ln - 1][lp + 1][1], ln - un);
-            sums[1][0] +=  binomial_coef(lp, up) * binomial_coef(ln, un) * rate_fms(up, un, rates, e_av) * 
-                           pow(pu_cond[lp][ln][1], up) * pow(1 - pu_cond[lp][ln][1], lp - up) * 
-                           pow(pu_cond[ln - 1][lp + 1][0], un) * pow(1 - pu_cond[ln - 1][lp + 1][0], ln - un);               
+    if (ln > 0){
+        for (int up = 0; up < lp + 1; up++){
+            for (int un = 0; un < ln + 1; un++){
+                sums[0][0] +=  binomial_coef(lp, up) * binomial_coef(ln, un) * rate_fms(un, up, rates, e_av) * 
+                            pow(pu_cond[gamma][lp][0], up) * pow(1 - pu_cond[gamma][lp][0], lp - up) * 
+                            pow(pu_cond[gamma][ln - 1][1], un) * pow(1 - pu_cond[gamma][ln - 1][1], ln - un);
+                sums[1][0] +=  binomial_coef(lp, up) * binomial_coef(ln, un) * rate_fms(up, un, rates, e_av) * 
+                            pow(pu_cond[gamma][lp][1], up) * pow(1 - pu_cond[gamma][lp][1], lp - up) * 
+                            pow(pu_cond[gamma][ln - 1][0], un) * pow(1 - pu_cond[gamma][ln - 1][0], ln - un);               
 
-            sums[0][1] +=  binomial_coef(lp, up) * binomial_coef(ln, un) * rate_fms(un, up + 1, rates, e_av) * 
-                           pow(pu_cond[lp][ln][0], up) * pow(1 - pu_cond[lp][ln][0], lp - up) * 
-                           pow(pu_cond[ln - 1][lp + 1][1], un) * pow(1 - pu_cond[ln - 1][lp + 1][1], ln - un);
-            sums[1][1] +=  binomial_coef(lp, up) * binomial_coef(ln, un) * rate_fms(up + 1, un, rates, e_av) * 
-                           pow(pu_cond[lp][ln][1], up) * pow(1 - pu_cond[lp][ln][1], lp - up) * 
-                           pow(pu_cond[ln - 1][lp + 1][0], un) * pow(1 - pu_cond[ln - 1][lp + 1][0], ln - un);
+                sums[0][1] +=  binomial_coef(lp, up) * binomial_coef(ln, un) * rate_fms(un, up + 1, rates, e_av) * 
+                            pow(pu_cond[gamma][lp][0], up) * pow(1 - pu_cond[gamma][lp][0], lp - up) * 
+                            pow(pu_cond[gamma][ln - 1][1], un) * pow(1 - pu_cond[gamma][ln - 1][1], ln - un);
+                sums[1][1] +=  binomial_coef(lp, up) * binomial_coef(ln, un) * rate_fms(up + 1, un, rates, e_av) * 
+                            pow(pu_cond[gamma][lp][1], up) * pow(1 - pu_cond[gamma][lp][1], lp - up) * 
+                            pow(pu_cond[gamma][ln - 1][0], un) * pow(1 - pu_cond[gamma][ln - 1][0], ln - un);
 
+            }
+        }
+    }else{
+        for (int up = 0; up < lp + 1; up++){
+            sums[0][0] +=  binomial_coef(lp, up) * rate_fms(0, up, rates, e_av) * 
+                        pow(pu_cond[gamma][lp][0], up) * pow(1 - pu_cond[gamma][lp][0], lp - up);
+            sums[1][0] +=  binomial_coef(lp, up) * rate_fms(up, 0, rates, e_av) * 
+                        pow(pu_cond[gamma][lp][1], up) * pow(1 - pu_cond[gamma][lp][1], lp - up);               
+
+            sums[0][1] +=  binomial_coef(lp, up) * rate_fms(0, up + 1, rates, e_av) * 
+                        pow(pu_cond[gamma][lp][0], up) * pow(1 - pu_cond[gamma][lp][0], lp - up);
+            sums[1][1] +=  binomial_coef(lp, up) * rate_fms(up + 1, 0, rates, e_av) * 
+                        pow(pu_cond[gamma][lp][1], up) * pow(1 - pu_cond[gamma][lp][1], lp - up);
         }
     }
+
 
     for (int ch_src = 0; ch_src < nch_fn; ch_src++){
         bit = ((ch_src >> plc_he) & 1);
@@ -212,47 +353,47 @@ void sum_fms(int K, long i_p, long i_n, int plc_he, double *prob_joint, double *
         uns = (ch_src == nch_fn - 1);
         uns_flip = (ch_flip == nch_fn - 1);
         me_sum_src[ch_src] += -sums[bit][uns || uns_flip] * prob_joint[ch_src] + 
-                              sums[1 - bit][uns || uns_flip] * prob_joint[ch_flip];
+                            sums[1 - bit][uns || uns_flip] * prob_joint[ch_flip];
         // if any of the two, uns and uns_flip, is one, then one has to use the value in
         // sums[2]. One of them represents the probability of a jump when ch_src in unsat,
         // and therefore it goes from E[bit unsat] + 1 ----> E[bit sat]. The other jump makes
         // E[bit sat] ----> E[bit unsat] + 1
     }
-
-    delete [] sums;
     
 }
 
 
 // it computes all the derivatives of the joint probabilities
 void der_fms(double ***prob_joint, double ***pu_cond, double **rates, int K, int l_max, 
-             int nch_fn, long nindex_l, double e_av, double ***me_sum){
-    for (long ip = 0; ip < nindex_l; ip++){
-        for (long in = 0; in < nindex_l; in++){
+             int nch_fn, double e_av, double ***me_sum,
+             vector <vector <int> > indexes_gamma, vector < vector < vector < int > > > indexes_lp){
+    for (long ind_g = 0; ind_g < indexes_gamma.size(); ind_g++){
+        for (long ind_l = 0; ind_l < indexes_lp[ind_g].size(); ind_l++){
             for (int ch = 0; ch < nch_fn; ch++){
-                me_sum[ip][in][ch] = 0;
+                me_sum[ind_g][ind_l][ch] = 0;
             }
         }
     }
 
     // candidate to be a parallel for
     #pragma omp parallel for
-    for (long ip = 0; ip < nindex_l; ip++){
-        for (long in = 0; in < nindex_l; in++){
+    for (long ind_g = 0; ind_g < indexes_gamma.size(); ind_g++){
+        for (long ind_l = 0; ind_l < indexes_lp[ind_g].size(); ind_l++){
             for (int w = 0; w < K; w++){
-                sum_fms(K, ip, in, w, prob_joint[ip][in], pu_cond, rates, nch_fn, l_max, e_av, 
-                        me_sum[ip][in]);
+                sum_fms(K, indexes_gamma[ind_g][w], indexes_lp[ind_g][ind_l][w], w, prob_joint[ind_g][ind_l], pu_cond, 
+                        rates, nch_fn, l_max, e_av, me_sum[ind_g][ind_l]);
             }
         }
     }
 }
 
 
-double energy(double ***prob_joint, long nindex_l, int nch_fn){
+double energy(double ***prob_joint, int nch_fn, vector < vector <int> > ncombs_full,
+              vector <vector <int> > indexes_gamma, vector < vector < vector < int > > > indexes_lp){
     double e = 0;
-    for (long ip = 0; ip < nindex_l; ip++){
-        for (long in = 0; in < nindex_l; in++){
-            e += prob_joint[ip][in][nch_fn - 1];
+    for (long ind_g = 0; ind_g < indexes_gamma[ind_g].size(); ind_g++){
+        for (long ind_l = 0; ind_l < indexes_lp[ind_g].size(); ind_l++){
+            e += prob_joint[ind_g][ind_l][nch_fn - 1] * ncombs_full[ind_g][ind_l];
         }
     }
     return e;
@@ -261,27 +402,46 @@ double energy(double ***prob_joint, long nindex_l, int nch_fn){
 
 // peforms the integration of the differential equations with the 2nd order Runge-Kutta
 // the method is implemented with adaptive step size
-void RK2_fms(double alpha, int K, int nch_fn, double eta, int l_max, 
+void RK2_fms(double alpha, int K, int nch_fn, double eta, int max_gamma, 
              double p0, char *fileener, double tl, double tol = 1e-2, double t0 = 0, double dt0 = 0.01, 
              double ef = 1e-6, double dt_min = 1e-7){
     double **rates;
-    double ***prob_joint, ***pu_cond, ***me_sum, *pi_lp_ln, *pjoint_lp_ln;
+    double ***prob_joint, ***pu_cond, ***me_sum, *pi_gamma_lp, *pjoint_gamma_lp;
     double e, error;                 
     
-    long nindex_l = (long) pow(l_max, K);
+    vector <vector <vector < pair <long, long> > > > vals_2_ind;
+    vector < vector <int> > ncombs_full;
+    vector <vector <vector <int > > > ncombs_glp; 
+    vector <vector <vector <int > > > place_there; 
+    vector <vector <int> > indexes_gamma; 
+    vector < vector < vector < int > > > indexes_lp;
+
+    vector <int> vals;
+
+    generate_index_gamma(indexes_gamma, vals, max_gamma, K, 0);
+    indexes_lp = generate_all_index_lp(indexes_gamma, K);
+    prepare_index_maps(vals_2_ind, ncombs_full, ncombs_glp, max_gamma, K, indexes_gamma, 
+                       indexes_lp, place_there);
     
-    table_all_rates(l_max, K, eta, rates);
+    long nindex_total = 0;
+    for (long ind_g = 0; ind_g < indexes_gamma.size(); ind_g++){
+        for (long ind_l = 0; ind_l < indexes_lp[ind_g].size(); ind_l++){
+            nindex_total++;
+        }
+    }
+
+    table_all_rates(max_gamma, K, eta, rates);
     
-    init_probs(prob_joint, pu_cond, pi_lp_ln, pjoint_lp_ln, me_sum, K, 
-               nch_fn, p0, l_max, nindex_l, alpha);
+    init_probs(prob_joint, pu_cond, pi_gamma_lp, pjoint_gamma_lp, me_sum, K, nch_fn, p0, 
+               max_gamma, alpha, indexes_gamma, indexes_lp);
 
     // initialize auxiliary arrays for the Runge-Kutta integration
     double ***k1, ***k2, ***prob_joint_1;
-    init_RK_arr(k1, k2, prob_joint_1, nch_fn, nindex_l);
+    init_RK_arr(k1, k2, prob_joint_1, nch_fn, indexes_gamma, indexes_lp);
 
     ofstream fe(fileener);
     
-    e = energy(prob_joint, nindex_l, nch_fn) * alpha;
+    e = energy(prob_joint, nch_fn, ncombs_full, indexes_gamma, indexes_lp) * alpha;
     fe << t0 << "\t" << e << endl;   // it prints the energy density
 
     double dt1 = dt0;
@@ -299,17 +459,19 @@ void RK2_fms(double alpha, int K, int nch_fn, double eta, int l_max,
 
         auto t1 = std::chrono::high_resolution_clock::now();
 
-        comp_pcond(prob_joint, pu_cond, pi_lp_ln, pjoint_lp_ln, K, nch_fn, l_max, nindex_l);
+        comp_pcond(prob_joint, pu_cond, pi_gamma_lp, pjoint_gamma_lp, K, nch_fn, max_gamma, 
+                   indexes_gamma, indexes_lp, vals_2_ind, ncombs_glp, place_there);
 
-        der_fms(prob_joint, pu_cond, rates, K, l_max, nch_fn, nindex_l, e, me_sum);   // in the rates, I use the energy density
+        der_fms(prob_joint, pu_cond, rates, K, max_gamma, nch_fn, e, me_sum, 
+                indexes_gamma, indexes_lp);   // in the rates, I use the energy density
 
         valid = true;
-        for (long ip = 0; ip < nindex_l; ip++){
-            for (long in = 0; in < nindex_l; in++){
+        for (long ind_g = 0; ind_g < indexes_gamma.size(); ind_g++){
+            for (long ind_l = 0; ind_l < indexes_lp[ind_g].size(); ind_l++){
                 for (int ch = 0; ch < nch_fn; ch++){
-                    k1[ip][in][ch] = dt1 * me_sum[ip][in][ch];
-                    prob_joint_1[ip][in][ch] = prob_joint[ip][in][ch] + k1[ip][in][ch];
-                    if (prob_joint_1[ip][in][ch] < 0){
+                    k1[ind_g][ind_l][ch] = dt1 * me_sum[ind_g][ind_l][ch];
+                    prob_joint_1[ind_g][ind_l][ch] = prob_joint[ind_g][ind_l][ch] + k1[ind_g][ind_l][ch];
+                    if (prob_joint_1[ind_g][ind_l][ch] < 0){
                         valid = false;
                     }
                 }
@@ -326,12 +488,12 @@ void RK2_fms(double alpha, int K, int nch_fn, double eta, int l_max,
             }
 
             valid = true;
-            for (long ip = 0; ip < nindex_l; ip++){
-                for (long in = 0; in < nindex_l; in++){
+            for (long ind_g = 0; ind_g < indexes_gamma.size(); ind_g++){
+                for (long ind_l = 0; ind_l < indexes_lp[ind_g].size(); ind_l++){
                     for (int ch = 0; ch < nch_fn; ch++){
-                        k1[ip][in][ch] = dt1 * me_sum[ip][in][ch];
-                        prob_joint_1[ip][in][ch] = prob_joint[ip][in][ch] + k1[ip][in][ch];
-                        if (prob_joint_1[ip][in][ch] < 0){
+                        k1[ind_g][ind_l][ch] = dt1 * me_sum[ind_g][ind_l][ch];
+                        prob_joint_1[ind_g][ind_l][ch] = prob_joint[ind_g][ind_l][ch] + k1[ind_g][ind_l][ch];
+                        if (prob_joint_1[ind_g][ind_l][ch] < 0){
                             valid = false;
                         }
                     }
@@ -339,17 +501,19 @@ void RK2_fms(double alpha, int K, int nch_fn, double eta, int l_max,
             }
         }
         
-        e = energy(prob_joint_1, nindex_l, nch_fn) * alpha;
-        comp_pcond(prob_joint_1, pu_cond, pi_lp_ln, pjoint_lp_ln, K, nch_fn, l_max, nindex_l);
+        e = energy(prob_joint_1, nch_fn, ncombs_full, indexes_gamma, indexes_lp) * alpha;
+        comp_pcond(prob_joint_1, pu_cond, pi_gamma_lp, pjoint_gamma_lp, K, nch_fn, max_gamma, 
+                   indexes_gamma, indexes_lp, vals_2_ind, ncombs_glp, place_there);
 
-        der_fms(prob_joint_1, pu_cond, rates, K, l_max, nch_fn, nindex_l, e, me_sum);
+        der_fms(prob_joint_1, pu_cond, rates, K, max_gamma, nch_fn, e, me_sum, 
+                indexes_gamma, indexes_lp);
             
         valid = true;
-        for (long ip = 0; ip < nindex_l; ip++){
-            for (long in = 0; in < nindex_l; in++){
+        for (long ind_g = 0; ind_g < indexes_gamma.size(); ind_g++){
+            for (long ind_l = 0; ind_l < indexes_lp[ind_g].size(); ind_l++){
                 for (int ch = 0; ch < nch_fn; ch++){
-                    k2[ip][in][ch] = dt1 * me_sum[ip][in][ch];
-                    if (prob_joint[ip][in][ch] + (k1[ip][in][ch] + k2[ip][in][ch]) / 2 < 0){
+                    k2[ind_g][ind_l][ch] = dt1 * me_sum[ind_g][ind_l][ch];
+                    if (prob_joint[ind_g][ind_l][ch] + (k1[ind_g][ind_l][ch] + k2[ind_g][ind_l][ch]) / 2 < 0){
                         valid = false;
                     }
                 }
@@ -364,31 +528,35 @@ void RK2_fms(double alpha, int K, int nch_fn, double eta, int l_max,
                 dt_min /= 2;
                 //  cout << "dt_min also halfed" << endl;
             }
-            e = energy(prob_joint, nindex_l, nch_fn) * alpha;
+            e = energy(prob_joint, nch_fn, ncombs_full, indexes_gamma, indexes_lp) * alpha;
         }else{
             error = 0;
-            for (int ch_u = 0; ch_u < nch_fn; ch_u++){
-                for (int ch = 0; ch < nch_fn; ch++){
-                    error += fabs(k1[ch_u][ch] - k2[ch_u][ch]);
+            for (long ind_g = 0; ind_g < indexes_gamma.size(); ind_g++){
+                for (long ind_l = 0; ind_l < indexes_lp[ind_g].size(); ind_l++){
+                    for (int ch = 0; ch < nch_fn; ch++){
+                        error += fabs(k1[ind_g][ind_l][ch] - k2[ind_g][ind_l][ch]);
+                    }
                 }
             }
 
-            error /= nch_fn * nch_fn;
+            error /= nch_fn * nindex_total;
 
             if (error < 2 * tol){
                 //  cout << "step dt=" << dt1 << "  accepted" << endl;
                 //  cout << "error=" << error << endl;
                 t += dt1;
-                for (int ch_u = 0; ch_u < nch_fn; ch_u++){
-                    for (int ch = 0; ch < nch_fn; ch++){
-                        prob_joint[ch_u][ch] += (k1[ch_u][ch] + k2[ch_u][ch]) / 2;
+                for (long ind_g = 0; ind_g < indexes_gamma.size(); ind_g++){
+                    for (long ind_l = 0; ind_l < indexes_lp[ind_g].size(); ind_l++){
+                        for (int ch = 0; ch < nch_fn; ch++){
+                            prob_joint[ind_g][ind_l][ch] += (k1[ind_g][ind_l][ch] + k2[ind_g][ind_l][ch]) / 2;
+                        }
                     }
                 }
-                e = energy(prob_joint, nch_fn) * alpha;
+                e = energy(prob_joint, nch_fn, ncombs_full, indexes_gamma, indexes_lp) * alpha;
                 fe << t << "\t" << e << endl;
 
             }else{
-                e = energy(prob_joint, nch_fn) * alpha;
+                e = energy(prob_joint, nch_fn, ncombs_full, indexes_gamma, indexes_lp) * alpha;
                 //  cout << "step dt=" << dt1 << "  rejected  new step will be attempted" << endl;
                 //  cout << "error=" <<  error << endl;
             }
@@ -414,32 +582,30 @@ void RK2_fms(double alpha, int K, int nch_fn, double eta, int l_max,
 
 
 int main(int argc, char *argv[]) {
-    long nsamples = atol(argv[1]);
-    double alpha = atof(argv[2]);
-    int K = atoi(argv[3]);
-    unsigned long seed_r = atol(argv[4]);
-    double eta = atof(argv[5]);
-    double tl = atof(argv[6]);
-    double tol = atof(argv[7]);
-    int nthr = atoi(argv[8]);
-    double eps_c = atof(argv[9]);
+    double alpha = atof(argv[1]);
+    int K = atoi(argv[2]);
+    double eta = atof(argv[3]);
+    double tl = atof(argv[4]);
+    double tol = atof(argv[5]);
+    int nthr = atoi(argv[6]);
+    double eps_c = atof(argv[7]);
 
     int nch_fn = (1 << K);
     double p0 = 0.5;
 
     omp_set_num_threads(nthr);
 
-    gsl_rng * r;
-    init_ran(r, seed_r);
-
     char fileener[300]; 
-    sprintf(fileener, "CDA1av_FMS_ener_K_%d_alpha_%.4lf_eta_%.4lf_tl_%.2lf_seed_%li_tol_%.1e_nsamples_%li_epsc_%.e.txt", 
-            K, alpha, eta, tl, seed_r, tol, nsamples, eps_c);
+    sprintf(fileener, "CDA1av_lpln_FMS_ener_K_%d_alpha_%.4lf_eta_%.4lf_tl_%.2lf_tol_%.1e_epsc_%.e.txt", 
+            K, alpha, eta, tl, tol, eps_c);
 
 
     int max_gamma = get_max_gamma(alpha, K, eps_c);
     
-    RK2_fms(alpha, K, nch_fn, eta, max_gamma, nsamples, p0, fileener, tl, r, tol);
+    RK2_fms(alpha, K, nch_fn, eta, max_gamma, p0, fileener, tl, tol);
+    
+
+    
 
     return 0;
 }
