@@ -488,8 +488,8 @@ int main(int argc, char *argv[]) {
     omp_set_num_threads(nthr);
 
     char fileener[300]; 
-    sprintf(fileener, "CDA1av_lpln_popdyn_FMS_ener_K_%d_alpha_%.4lf_eta_%.4lf_tl_%.2lf_tol_%.1e_epsc_%.e.txt", 
-            K, alpha, eta, tl, tol, eps_c);
+    sprintf(fileener, "CDA1av_lpln_popdyn_FMS_ener_K_%d_alpha_%.4lf_eta_%.4lf_tl_%.2lf_tol_%.1e_epsc_%.e_popsize_%li_seed_%li.txt", 
+            K, alpha, eta, tl, tol, eps_c, pop_size, seed_r);
 
 
     int max_gamma = get_max_gamma(alpha, K, eps_c);
