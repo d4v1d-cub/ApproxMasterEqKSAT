@@ -11,7 +11,7 @@
 using namespace std;
 
 double binomial_coef(int n, int k){
-    return gsl_ran_binomial_pdf(k, 1, n);
+    return gsl_sf_fact(n) / gsl_sf_fact(n - k) / gsl_sf_fact(k);
 }
 
 
@@ -90,21 +90,40 @@ double count_independent_repetitions(vector <int> vals_g, vector <int> vals_l){
 }
 
 
-void prepare_index_maps(vector <vector <vector < pair <long, long> > > > &vals_2_ind, vector < vector <int> > &ncombs_full,
-                        vector <vector <vector <int > > > &ncombs_glp, int max_gamma, int K,
+double count_independent_repetitions(vector <int> vals){
+    double rep = 1;
+    int w, counter;
+    while(vals.size() > 1){
+        w = 1;
+        counter = 0;
+        while (w < vals.size()){
+            if (vals[w] == vals[0]){
+                vals.erase(vals.begin() + w);
+                counter++;
+            }else{
+                w++;
+            }
+        }
+        vals.erase(vals.begin());
+        rep *= gsl_sf_fact(counter + 1);
+    }
+    return rep;
+}
+
+
+void prepare_index_maps(vector <vector <vector < pair <long, long> > > > &vals_2_ind, vector < int > &ncombs_full,
+                        vector <vector < vector <int> > > &ncombs_glp, int max_gamma, int K,
                         vector <vector <int> > indexes_gamma, vector < vector < vector < int > > > indexes_lp,
                         vector <vector <vector <int > > > &place_there){
-    ncombs_full = vector <vector <int> > (indexes_gamma.size(), vector <int> ());
+    ncombs_full = vector < int > (indexes_gamma.size());
     double rep;
     for (long ind_g = 0; ind_g < indexes_gamma.size(); ind_g++){
-        for (long ind_l = 0; ind_l < indexes_lp[ind_g].size(); ind_l++){
-            rep = count_independent_repetitions(indexes_gamma[ind_g], indexes_lp[ind_g][ind_l]);
-            ncombs_full[ind_g].push_back(gsl_sf_fact(K) / rep);
-        }
+        rep = count_independent_repetitions(indexes_gamma[ind_g]);
+        ncombs_full[ind_g] = gsl_sf_fact(K) / rep;
     }
 
     vals_2_ind = vector <vector <vector <pair <long, long> > > > (max_gamma + 1, vector <vector <pair <long, long> > > ());
-    ncombs_glp = vector <vector <vector <int> > > (max_gamma + 1, vector <vector <int> > ());
+    ncombs_glp = vector <vector < vector <int> > > (max_gamma + 1, vector < vector <int> > ());
     place_there = vector <vector <vector <int> > > (max_gamma + 1, vector <vector <int> > ());
     int w;
     bool cond;
@@ -128,13 +147,10 @@ void prepare_index_maps(vector <vector <vector < pair <long, long> > > > &vals_2
                         ind_in.push_back(pair <long, long> (ind_g, ind_l));
 
                         vector <int> indexes_g_exc(indexes_gamma[ind_g]);
-                        indexes_g_exc.erase(indexes_g_exc.begin() + w);
-                        vector <int> indexes_l_exc(indexes_lp[ind_g][ind_l]);
-                        indexes_l_exc.erase(indexes_l_exc.begin() + w);
-
-                        rep = count_independent_repetitions(indexes_g_exc, indexes_l_exc);
+                        indexes_g_exc.erase(indexes_g_exc.begin() + w);        
+                        rep = count_independent_repetitions(indexes_g_exc);
                         comb_in.push_back(gsl_sf_fact(K - 1) / rep);
-                        
+
                         plc_in.push_back(w);
                     }
                 }
@@ -241,12 +257,12 @@ double rate_fms(int E0, int E1, int K, double eta){
 }
 
 
-void table_all_rates(int max_gamma, int K, double eta, double **&rates){
-    rates = new double *[max_gamma + 1];
-    for (int gamma = 0; gamma < max_gamma + 1; gamma++){
-        rates[gamma] = new double [gamma + 1];
-        for (int E0 = 0; E0 < gamma + 1; E0++){
-            rates[gamma][E0] = rate_fms(E0, gamma - E0, K, eta);
+void table_all_rates(int max_c, int K, double eta, double **&rates){
+    rates = new double *[max_c + 1];
+    for (int c = 0; c < max_c + 1; c++){
+        rates[c] = new double [c + 1];
+        for (int E0 = 0; E0 < c + 1; E0++){
+            rates[c][E0] = rate_fms(E0, c - E0, K, eta);
         }
     }
 }
@@ -388,12 +404,12 @@ void der_fms(double ***prob_joint, double ***pu_cond, double **rates, int K, int
 }
 
 
-double energy(double ***prob_joint, int nch_fn, vector < vector <int> > ncombs_full,
+double energy(double ***prob_joint, int nch_fn, vector < int > ncombs_full,
               vector <vector <int> > indexes_gamma, vector < vector < vector < int > > > indexes_lp){
     double e = 0;
-    for (long ind_g = 0; ind_g < indexes_gamma[ind_g].size(); ind_g++){
+    for (long ind_g = 0; ind_g < indexes_gamma.size(); ind_g++){
         for (long ind_l = 0; ind_l < indexes_lp[ind_g].size(); ind_l++){
-            e += prob_joint[ind_g][ind_l][nch_fn - 1] * ncombs_full[ind_g][ind_l];
+            e += prob_joint[ind_g][ind_l][nch_fn - 1] * ncombs_full[ind_g];
         }
     }
     return e;
@@ -410,7 +426,7 @@ void RK2_fms(double alpha, int K, int nch_fn, double eta, int max_gamma,
     double e, error;                 
     
     vector <vector <vector < pair <long, long> > > > vals_2_ind;
-    vector < vector <int> > ncombs_full;
+    vector < int > ncombs_full;
     vector <vector <vector <int > > > ncombs_glp; 
     vector <vector <vector <int > > > place_there; 
     vector <vector <int> > indexes_gamma; 
@@ -430,7 +446,7 @@ void RK2_fms(double alpha, int K, int nch_fn, double eta, int max_gamma,
         }
     }
 
-    table_all_rates(max_gamma, K, eta, rates);
+    table_all_rates(max_gamma + 1, K, eta, rates);
     
     init_probs(prob_joint, pu_cond, pi_gamma_lp, pjoint_gamma_lp, me_sum, K, nch_fn, p0, 
                max_gamma, alpha, indexes_gamma, indexes_lp);
