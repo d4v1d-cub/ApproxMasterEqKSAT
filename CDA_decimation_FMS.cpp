@@ -702,7 +702,7 @@ void decimate(Tnode *nodes, int N, Thedge *hedges){
 void RK2_fms_step(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***pu_cond,
                   double **rates, long N, long M, int K, int nch_fn, double &e, double **me_sum, 
                   double **k1, double **k2, double **prob_joint_1, double &dt1, double &dt_min, 
-                  double tol, double &t, long ndec, ofstream &fe, int &niter_each){
+                  double tol, double &t, long ndec, int &niter_each){
     bool valid = false;
     
     while (!valid){
@@ -784,7 +784,6 @@ void RK2_fms_step(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***p
                 }
                 e = energy(prob_joint, hedges, M);
                 comp_pcond(prob_joint, pu_cond, hedges, M, nch_fn, nodes);
-                fe << ndec << "\t" << niter_each << "\t" << t << "\t" << e << endl;
             }else{
                 e = energy(prob_joint, hedges, M);
                 comp_pcond(prob_joint, pu_cond, hedges, M, nch_fn, nodes);
@@ -822,16 +821,13 @@ void decimation_quadratic_fms(Tnode *nodes, Thedge *hedges, long N, long M, int 
     // initialize auxiliary arrays for the Runge-Kutta integration
     double **k1, **k2, **prob_joint_1;
     init_RK_arr(k1, k2, prob_joint_1, M, nch_fn);
-
-    ofstream fe(fileener);
-
-    fe << "# dec_step" << "\t" << "iters" << "\t" << "t(MCS)" << "\t" << "energy" << endl;
     
     e = energy(prob_joint, hedges, M);
     
     double dt1 = dt0;
     double t;
     int niter_each;
+    long niter_final = 0;
 
     // the time scale is already given in Monte Carlo steps. Inside the rates I am using 
     // the energy density e_av
@@ -839,15 +835,18 @@ void decimation_quadratic_fms(Tnode *nodes, Thedge *hedges, long N, long M, int 
     for (long ndec = 0; ndec < N; ndec++){
         t = 0;
         niter_each = 0;
-        fe << ndec << "\t" << 0 << "\t" << 0 << "\t" << e << endl;   // it prints the energy density
         while (niter_each < steps_dec && e > 1){
             RK2_fms_step(nodes, hedges, prob_joint, pu_cond, rates, N, M, K, nch_fn, e, me_sum, 
-                         k1, k2, prob_joint_1, dt1, dt_min, tol, t, ndec, fe, niter_each);
+                         k1, k2, prob_joint_1, dt1, dt_min, tol, t, ndec, niter_each);
         }
         decimate(nodes, N, hedges);
         update_prob_joint(prob_joint, M, K, nch_fn, nodes, hedges);
+        niter_final += niter_each;
     }
 
+    ofstream fe(fileener);
+    fe << "# niters" << "\t" << "ef" << endl;
+    fe << niter_final << "\t" << e << endl;   // it prints the energy density
     fe.close();
 
 }
@@ -906,7 +905,7 @@ int main(int argc, char *argv[]) {
     //                    K, N, M);
 
     char fileener[300]; 
-    sprintf(fileener, "CDA_decimation_FMS_ener_K_%d_N_%li_M_%li_eta_%.4lf_stepsdec_%d_seed_%li_tol_%.1e.txt", 
+    sprintf(fileener, "CDA_decimation_FMS_dyn_K_%d_N_%li_M_%li_eta_%.4lf_stepsdec_%d_seed_%li_tol_%.1e.txt", 
             K, N, M, eta, steps_dec, seed_r, tol);
 
     char filefinal[300]; 
