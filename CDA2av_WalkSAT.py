@@ -182,6 +182,7 @@ def der_full(t, x, K, max_c, poisson_w, nch_exc, q, alpha, thr_e):
     all_ders = comp_ders(probs, av_u, av_s0, av_s, K, max_c, q, nch_exc, poisson_probs, poisson_sums)
     
     print(t, e)
+    sys.stdout.flush()
     return flatten(all_ders) / e
 
 
