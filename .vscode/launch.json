@@ -501,7 +501,7 @@
             "request": "launch",
             "program": "CDA2av_WalkSAT.py",
             "console": "integratedTerminal",
-            "args": ["2.3", "3", "1.0", "1e-6", "10", "1e-6", "1e-5"]
+            "args": ["2.3", "3", "1.0", "1e-6", "10", "1e-6"]
         }
     ],
     "version": "2.0.0"

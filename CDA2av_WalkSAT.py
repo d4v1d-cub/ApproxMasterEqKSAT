@@ -61,14 +61,6 @@ def init_probs(max_c, k, poisson_w):
     return probs
 
 
-def norm(probs, max_c):
-    cumul = probs[0]
-    for c in range(1, max_c + 1):
-        for u in range(c + 1):
-            cumul += np.sum(probs[c][u][:-1])
-    return cumul
-
-
 def flatten(probs):
     x = [probs[0]]
     for i in range(1, len(probs)):
@@ -180,7 +172,7 @@ def energy(probs, K):
 
 
 
-def der_full(t, x, K, max_c, poisson_w, nch_exc, q, alpha, thr_e, thr_norm):
+def der_full(t, x, K, max_c, poisson_w, nch_exc, q, alpha, thr_e):
     probs = unflatten(x, max_c)
     e = energy(probs, K)
     pu_av = e / alpha
@@ -193,13 +185,10 @@ def der_full(t, x, K, max_c, poisson_w, nch_exc, q, alpha, thr_e, thr_norm):
     return flatten(all_ders) / e
 
 
-def event_stop(t, x, K, max_c, poisson_w, nch_exc, q, alpha, thr_e, thr_norm):
+def event_stop(t, x, K, max_c, poisson_w, nch_exc, q, alpha, thr_e):
     probs = unflatten(x, max_c)
     e = energy(probs, K)
-    n = norm(probs, max_c)
     if e < thr_e:
-        return 0
-    elif n < 1 - thr_norm:
         return 0
     else:
         return 1
@@ -208,9 +197,9 @@ def event_stop(t, x, K, max_c, poisson_w, nch_exc, q, alpha, thr_e, thr_norm):
 event_stop.terminal = True
 
 
-def solution(tl, x0, K, max_c, poisson_w, q, alpha, thr_e, thr_norm, file_probs, file_energy, method, rtol, atol):
+def solution(tl, x0, K, max_c, poisson_w, q, alpha, thr_e, file_probs, file_energy, method, rtol, atol):
     nch_exc = 2 ** (K - 1)
-    sol = solve_ivp(der_full, [0, tl], x0, method=method, args=(K, max_c, poisson_w, nch_exc, q, alpha, thr_e, thr_norm),
+    sol = solve_ivp(der_full, [0, tl], x0, method=method, args=(K, max_c, poisson_w, nch_exc, q, alpha, thr_e),
                     rtol=rtol, atol=atol, dense_output=True, events=event_stop)
     times = sol.t
     y_vals = sol.y
@@ -234,12 +223,12 @@ def solution(tl, x0, K, max_c, poisson_w, q, alpha, thr_e, thr_norm, file_probs,
     fp.close()
 
 
-def several_alphas(tl, alpha, K, q, eps, thr_e, thr_norm, file_probs, file_energy,
+def several_alphas(tl, alpha, K, q, eps, thr_e, file_probs, file_energy,
                    method="RK23", rtol=1e-6, atol=1e-12):
     max_c, poisson_w = all_poisson_weights(alpha, K, eps)
     probs0 = init_probs(max_c, K, poisson_w)
     x0 = flatten(probs0)
-    solution(tl, x0, K, max_c, poisson_w, q, alpha, thr_e, thr_norm, file_probs, file_energy, method, rtol, atol)
+    solution(tl, x0, K, max_c, poisson_w, q, alpha, thr_e, file_probs, file_energy, method, rtol, atol)
 
 
 def main():
@@ -250,16 +239,15 @@ def main():
     tl = float(sys.argv[5])
 
     thr_e = float(sys.argv[6])
-    thr_norm = float(sys.argv[7])
 
     head_str = "CDA2av_WalkSAT" + "_K_" + str(K)
     common_str = "alpha_" + str(alpha) + "_q_" + str(q) + "_eps_" + str(eps) + \
-                 "_tl_" + str(tl) + "_thr_e_" + str(thr_e) + "_thr_n_" + str(thr_norm)
+                 "_tl_" + str(tl) + "_thr_e_" + str(thr_e)
 
     file_probs = head_str + "_probs_" + common_str + ".txt"
     file_energy = head_str + "_eners_" + common_str + ".txt"
 
-    several_alphas(tl, alpha, K, q, eps, thr_e, thr_norm, file_probs, file_energy)
+    several_alphas(tl, alpha, K, q, eps, thr_e, file_probs, file_energy)
 
     return 0
 
