@@ -29,8 +29,8 @@ def walksat_rate(u, K, q, nch_exc, poisson_prob_S, poisson_sum_S):
                 bit = ((ch >> w) & 1)
                 prod *= pneigh[bit]  
                 cumul_bits += 1 - bit
-            cumul += prod / (cumul_bits + 1);
-        return u * (q / K + (1 - q) * cumul); 
+            cumul += prod / (cumul_bits + 1)
+        return u * (q / K + (1 - q) * cumul)
     else:
         return 0
 
