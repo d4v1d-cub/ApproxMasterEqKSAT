@@ -241,10 +241,44 @@ Requires: GSL (GNU Scientific Library), OpenMP
 
 # Data
 
-The folder Data/ contains most of the data necessary to reobtain the figures in our paper ([arxiv](http://arxiv.org/abs/2504.06757)). Inside, the user can find a folder for each one of the figures. Some of the data could not be uploaded to GitHub because of space issues (in total, it would be more than 30GB).
+The folder `Data/` contains most of the data necessary to reobtain the figures in our paper ([arxiv](http://arxiv.org/abs/2504.06757)). Inside, the user can find a folder for each one of the figures. Some of the data could not be uploaded to GitHub because of space issues (in total, it would be more than 30GB).
+
+The folder structure of the repository is the following:
+
+```
+├── Data
+│   ├── Fig2_S3_S4
+│   │   ├── FMS
+│   │   │   ├── CDA
+│   │   │   ├── CME
+│   │   │   └── FMS
+│   │   └── WalkSAT
+│   │       ├── CDA
+│   │       ├── CME
+│   │       └── WalkSAT
+│   ├── Fig3
+│   │   └── SupportingData
+│   │       ├── FMS
+│   │       │   ├── CDA
+│   │       │   ├── CME
+│   │       │   └── FMS
+│   │       └── WalkSAT
+│   │           ├── CDA
+│   │           ├── CME
+│   │           └── WalkSAT
+│   ├── Fig4
+│   │   └── AllData
+│   ├── FigS1
+│   └── FigS2
+├── Debug
+├── Other_programs
+└── Scripts
+```
+
+Folder names are informative of the contents.
 
 # References
 <a id="1">[1]</a> 
 Sakari Seitz, Mikko Alava and Pekka Orponen. 
 Focused local search for random 3-satisfiability. 
-J. Stat. Mech. Teory Exp., P06006 (2005).
+J. Stat. Mech. Teory Exp., P06006 (2005)..
