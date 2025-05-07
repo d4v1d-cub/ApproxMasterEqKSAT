@@ -15,7 +15,7 @@ This repository contains all the code used to generate data for the article "Loc
 ### FMS
 
 File: wfacwsat.c
-This implements the Focused Metropolis Search (FMS) algorithm for solving the **K-SAT problem** on random graphs. This is an implementation by Sakari Seitz, made as a modification of the public walksat package, by Henry Kautz.
+This implements the Focused Metropolis Search (FMS) algorithm for solving the **K-SAT problem** on random graphs [[1]](#1). This is an implementation by Sakari Seitz, made as a modification of the public walksat package, by Henry Kautz.
 Auxiliary files: Graph_to_CNF_input.cpp, Scripts/run_FMS_KSAT_PD_inner.sh
 Parameters:
   The code can receive several parameters. For the article, we varied a subset of them using the script "Scripts/run_FMS_KSAT_PD_inner.sh". The script receives:
@@ -236,3 +236,10 @@ Parameters:
 
 Language: C++
 Requires: GSL (GNU Scientific Library), OpenMP
+
+
+## References
+<a id="1">[1]</a> 
+Sakari Seitz, Mikko Alava and Pekka Orponen. 
+Focused local search for random 3-satisfiability. 
+J. Stat. Mech. Teory Exp., P06006 (2005).
