@@ -8,6 +8,8 @@ This repository contains all the code used to generate data for the article "Loc
 * Perform the numerical integration of the average version of CDA for FMS and G-WalkSAT dynamic rules
 * Run the CDA-guided decimation with FMS dynamic rules
 
+It also contains most of the data necessary to reobtain the figures in the paper, and the scripts that produce them
+
 # Description of the different programs
 
 ## Algorithms
