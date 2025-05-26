@@ -702,10 +702,10 @@ void decimate(Tnode *nodes, int N, Thedge *hedges){
 void RK2_fms_step(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***pu_cond,
                   double **rates, long N, long M, int K, int nch_fn, double &e, double **me_sum, 
                   double **k1, double **k2, double **prob_joint_1, double &dt1, double &dt_min, 
-                  double tol, double &t, long ndec, int &niter_each){
+                  double tol, double &t, long ndec, int &niter_each, int maxiter){
     bool valid = false;
-    
-    while (!valid){
+    int nit = 0, nit_intern;
+    while (!valid && nit < maxiter){
     
         der_fms(nodes, hedges, prob_joint, pu_cond, rates, M, K, nch_fn, e / N, me_sum);   // in the rates, I use the energy density
 
@@ -720,7 +720,8 @@ void RK2_fms_step(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***p
             }
         }
 
-        while (!valid){
+        nit_intern = 0;
+        while (!valid && nit_intern < maxiter){
             //  cout << "joint probabilities became negative in the auxiliary step of RK2" << endl;
             dt1 /= 2;
             //  cout << "step divided by half    dt=" << dt1 << endl;
@@ -739,8 +740,14 @@ void RK2_fms_step(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***p
                     }
                 }
             }
+            nit_intern++;
         }
-            
+        if (nit_intern == maxiter){
+            cout << "RK2 step did not converge in " << maxiter << " iterations  at t="<< t << endl;
+            niter_each++;
+            return;
+        } 
+
         e = energy(prob_joint_1, hedges, M);
         comp_pcond(prob_joint_1, pu_cond, hedges, M, nch_fn, nodes);
 
@@ -798,6 +805,11 @@ void RK2_fms_step(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***p
             }
 
         }
+        nit++;
+    }
+    if (nit == maxiter){
+        cout << "RK2 step did not converge in " << maxiter << " iterations  at t="<< t << endl;
+        niter_each++;
     }
 }
 
@@ -806,7 +818,7 @@ void RK2_fms_step(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***p
 // the method is implemented with adaptive step size
 void decimation_quadratic_fms(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, 
             double eta, int max_c, char *fileener, int steps_dec, double tol = 1e-2, 
-            double dt0 = 0.01, double dt_min = 1e-7){
+            double dt0 = 0.01, double dt_min = 1e-7, int maxiter=10000){
     double **rates;
     double **prob_joint, ***pu_cond, **me_sum, **pi;
     double e, error;                 
@@ -837,7 +849,7 @@ void decimation_quadratic_fms(Tnode *nodes, Thedge *hedges, long N, long M, int 
         niter_each = 0;
         while (niter_each < steps_dec && e > 1){
             RK2_fms_step(nodes, hedges, prob_joint, pu_cond, rates, N, M, K, nch_fn, e, me_sum, 
-                         k1, k2, prob_joint_1, dt1, dt_min, tol, t, ndec, niter_each);
+                         k1, k2, prob_joint_1, dt1, dt_min, tol, t, ndec, niter_each, maxiter);
         }
         decimate(nodes, N, hedges);
         update_prob_joint(prob_joint, M, K, nch_fn, nodes, hedges);
