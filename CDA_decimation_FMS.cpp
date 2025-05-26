@@ -805,7 +805,7 @@ void RK2_fms_step(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***p
             }
 
         }
-        nit++;
+        nit += max(nit_intern, 1);
     }
     if (nit == maxiter){
         cout << "RK2 step did not converge in " << maxiter << " iterations  at t="<< t << endl;
@@ -818,7 +818,7 @@ void RK2_fms_step(Tnode *nodes, Thedge *hedges, double **prob_joint, double ***p
 // the method is implemented with adaptive step size
 void decimation_quadratic_fms(Tnode *nodes, Thedge *hedges, long N, long M, int K, int nch_fn, 
             double eta, int max_c, char *fileener, int steps_dec, double tol = 1e-2, 
-            double dt0 = 0.01, double dt_min = 1e-7, int maxiter=10000){
+            double dt0 = 0.01, double dt_min = 1e-7, int maxiter = 100){
     double **rates;
     double **prob_joint, ***pu_cond, **me_sum, **pi;
     double e, error;                 
