@@ -1,0 +1,8 @@
+#CDA decimation FMS KSAT
+#N=32768  stepsdec=5  alpha=3.84   NSamples=2
+#av(e)	0.0
+#std(e)	0.0
+#av(t)	9949.0
+#std(t)	988.5352800987935
+0.0	8551.0	401
+0.0	11347.0	433

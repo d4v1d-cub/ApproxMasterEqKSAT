@@ -26,12 +26,12 @@ set arrow from as,graph 0 to as,graph 1 nohead dt 2
 set label "{/=22 {/Symbol a}_{s}}" at 4.275, 0.07
 
 
-p "< awk '$1==512 && $3==10' CDA_decimation_FMS_all_K_3.txt" u 2:6 w p ps 1.2 lc 1 lw 2 t '{/=24 N=512',\
-"< awk '$1==1024 && $3==10' CDA_decimation_FMS_all_K_3.txt" u 2:6 w p ps 1.2 lc 2 lw 2 t '{/=24 N=1024',\
-"< awk '$1==2048 && $3==10' CDA_decimation_FMS_all_K_3.txt" u 2:6 w p ps 1.2 lc 4 lw 2 t '{/=24 N=2048',\
-"< awk '$1==4096 && $3==10' CDA_decimation_FMS_all_K_3.txt" u 2:6 w p ps 1.2 lc 6 lw 2 t '{/=24 N=4096',\
-"< awk '$1==8192 && $3==10' CDA_decimation_FMS_all_K_3.txt" u 2:6 w p ps 1.2 lc 7 lw 2 t '{/=24 N=8192',\
-"< awk '$1==16384 && $3==10' CDA_decimation_FMS_all_K_3.txt" u 2:6 w p ps 1.2 lc 8 lw 2 t '{/=24 N=16384',\
+p "< awk '$1==512 && $3==10' CDA_decimation_FMS_all_K_3_stepsdec_10.txt" u 2:6:(sqrt($6 * (1 - $6) / $9)) w yerror ps 1.2 lc 1 lw 2 t '{/=24 N=512',\
+"< awk '$1==1024 && $3==10' CDA_decimation_FMS_all_K_3_stepsdec_10.txt" u 2:6:(sqrt($6 * (1 - $6) / $9)) w yerror ps 1.2 lc 2 lw 2 t '{/=24 N=1024',\
+"< awk '$1==2048 && $3==10' CDA_decimation_FMS_all_K_3_stepsdec_10.txt" u 2:6:(sqrt($6 * (1 - $6) / $9)) w yerror ps 1.2 lc 4 lw 2 t '{/=24 N=2048',\
+"< awk '$1==4096 && $3==10' CDA_decimation_FMS_all_K_3_stepsdec_10.txt" u 2:6:(sqrt($6 * (1 - $6) / $9)) w yerror ps 1.2 lc 6 lw 2 t '{/=24 N=4096',\
+"< awk '$1==8192 && $3==10' CDA_decimation_FMS_all_K_3_stepsdec_10.txt" u 2:6:(sqrt($6 * (1 - $6) / $9)) w yerror ps 1.2 lc 7 lw 2 t '{/=24 N=8192',\
+"< awk '$1==16384 && $3==10' CDA_decimation_FMS_all_K_3_stepsdec_10.txt" u 2:6:(sqrt($6 * (1 - $6) / $9)) w yerror ps 1.2 lc 8 lw 2 t '{/=24 N=16384',\
 "sigmoid_data_N_512_stepsdec_10.txt" u 1:2 w l lc 1 lw 2 notitle,\
 "sigmoid_data_N_1024_stepsdec_10.txt" u 1:2 w l lc 2 lw 2 notitle,\
 "sigmoid_data_N_2048_stepsdec_10.txt" u 1:2 w l lc 4 lw 2 notitle,\
